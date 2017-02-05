@@ -21,15 +21,55 @@
 #include <signal.h>
 #include <unistd.h>
 #include <errno.h>
+#include <pthread.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <map>
+#include <string>
+#include <vector>
+
+#include "pub.h"
+
+extern "C"
+{
 #include "turn.h"
 #include "auth.h"
+}
+
 
 #define REALM		"pjsip.org"
 //#define TURN_PORT	PJ_STUN_TURN_PORT
 #define TURN_PORT_UDP	34780
+#define	SING_TRANSMIT_UDP 34781
 #define TURN_PORT_TCP	34780
 #define LOG_LEVEL	4
 
+typedef struct client_addr_s
+{
+	struct sockaddr_in cliaddr;
+	socklen_t len;
+	int sockfd;
+
+	client_addr_s()
+	{
+		memset(&cliaddr, 0, sizeof(cliaddr));
+		len = sizeof(socklen_t);
+		sockfd = 0;
+	}
+}client_addr_t;
+
+typedef struct singal_info_s
+{
+	client_addr_t cli;
+	std::string msg;
+}singal_info_t;
+
+typedef struct attr_type_value_s
+{
+	int type;
+	std::string value;
+}attr_type_value_t;
 
 static pj_caching_pool g_cp;
 static pj_bool_t g_quit = PJ_FALSE;
@@ -104,6 +144,116 @@ static void dump_status(pj_turn_srv *srv)
 	}
 }
 
+void do_registe(const std::vector<attr_type_value_t> &content)
+{
+	std::string guid;
+	std::string local_info;
+
+	for (std::vector<attr_type_value_t>::const_iterator iter = content.begin();
+		 iter != content.end();
+		 ++iter)
+	{
+		const attr_type_value_t& item(*iter);
+		switch (item.type)
+		{
+		case TYPE_ATTR_GUID:
+			guid = item.value;
+			break;
+		case TYPE_ATTR_LOCAL_INFO:
+			local_info = item.value;
+			break;
+		default:
+			break;
+		}
+	}
+}
+
+void do_handle_singal_info(int msg_type, const std::vector<attr_type_value_t> &content)
+{
+	switch (msg_type)
+	{
+	case MSG_TYPE_REGISTER:
+		do_registe(content);
+		break;
+	default:
+		break;
+	}
+}
+
+void* handle_singal_info(void* data)
+{
+	assert(data != NULL);
+	singal_info_t *signal_info = (singal_info_t*)data;
+
+	unsigned i = 0;
+	int msg_type = 0;
+	memcpy(&msg_type, &signal_info->msg[0], sizeof(msg_type));
+	i += sizeof(msg_type);
+
+	std::vector<attr_type_value_t> vec_attrs;
+
+	for(; i < signal_info->msg.length();)
+	{
+		attr_type_value_t attr;
+
+		memcpy(&attr.type, &signal_info->msg[i], sizeof(attr.type));
+		attr.type = ntohl(attr.type);
+		i += sizeof(attr.type);
+
+		int len = 0;
+		memcpy(&len, &signal_info->msg[i], sizeof(len));
+		len = ntohl(len);
+		i += sizeof(len);
+
+		attr.value.assign(&signal_info->msg[i], len);
+		i+= len;
+
+		vec_attrs.push_back(attr);
+	}
+
+	do_handle_singal_info(msg_type, vec_attrs);
+
+	int ret = sendto(signal_info->cli.sockfd, "success", strlen("success"), 0, (struct sockaddr *)&signal_info->cli.cliaddr, signal_info->cli.len);
+	if (ret < 0)
+	{
+		err("sendto error, err=%d\n", errno);
+	}
+}
+
+void* thread_singal_transmit(void*)
+{
+	int sockfd = -1;
+	struct sockaddr_in servaddr;
+	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+	bzero(&servaddr, sizeof(servaddr));
+	servaddr.sin_family = AF_INET;
+	servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	servaddr.sin_port = htons(SING_TRANSMIT_UDP);
+	bind(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr));
+
+	enum {MAX_RECV_LINE = 1024};
+	char msg[MAX_RECV_LINE] = {0};
+
+	for (;!g_quit;)
+	{
+		bzero(msg, MAX_RECV_LINE);
+
+		singal_info_t *singal_info = new singal_info_t;
+
+		int recv_len = recvfrom(sockfd, msg, MAX_RECV_LINE, 0, (struct sockaddr *)(&singal_info->cli.cliaddr), &singal_info->cli.len);
+		if (recv_len < 0)
+		{
+			err("recv from error, errno=%d", errno);
+		}
+
+		singal_info->msg.assign(msg, recv_len);
+		singal_info->cli.sockfd = sockfd;
+
+		pthread_t t;
+		pthread_create(&t, NULL, handle_singal_info, (void*)singal_info);
+	}
+}
+
 int main(int argc, char* argv[])
 {
 	pj_bool_t DAEMON_MODE = PJ_FALSE;
@@ -120,6 +270,14 @@ int main(int argc, char* argv[])
 	if (DAEMON_MODE && -1 == daemon(1, 0))
 	{
 		return err("daemon failed.", errno);
+	}
+
+	//start singal udp listen. just used to transmit the info.
+	pthread_t t_sigal;
+	int ret = pthread_create(&t_sigal, NULL, thread_singal_transmit, NULL);
+	if (ret != 0)
+	{
+		return err("create singal thread failed.", errno);
 	}
 
 	pj_turn_srv *srv = NULL;
@@ -182,6 +340,8 @@ int main(int argc, char* argv[])
 	pj_turn_srv_destroy(srv);
 	pj_caching_pool_destroy(&g_cp);
 	pj_shutdown();
+
+	pthread_join(t_sigal, NULL);
 
 	return 0;
 }

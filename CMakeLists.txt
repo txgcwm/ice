@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 2.8)
 
 set(PJNATH_SRC_ROOT ${CMAKE_SOURCE_DIR}/pjproject-2.5.5)
 
+include_directories(${CMAKE_SOURCE_DIR}/public)
 include_directories(${PJNATH_SRC_ROOT}/pjlib-util/include)
 include_directories(${PJNATH_SRC_ROOT}/pjlib/include)
 include_directories(${PJNATH_SRC_ROOT}/pjnath/include)

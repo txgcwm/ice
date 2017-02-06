@@ -1161,21 +1161,16 @@ static void icedemo_print_menu(void)
 	puts("+----------------------------------------------------------------------+");
 }
 
-void* thread_signal_heart(void *data)
+void make_heart_info(char* send_buffer, int buff_max, int *offset)
 {
-	assert(data != NULL);
-	addrinfo_t *addr = (addrinfo_t*)data;
-
-	char send_buffer[64] = {0};
-	int offset = 0;
-
 	int msg_type = MSG_TYPE_HEART;
 	msg_type = htonl(msg_type);
-	memcpy(send_buffer + offset, &msg_type, sizeof(msg_type));
-	offset += sizeof(msg_type);
+	memcpy(send_buffer + *offset, &msg_type, sizeof(msg_type));
+	*offset += sizeof(msg_type);
+	assert(*offset < buff_max);
 	int len = 0;
 	len = htonl(len);
-	memcpy(send_buffer + offset, &len, sizeof(len));
+	memcpy(send_buffer + *offset, &len, sizeof(len));
 	int attr_type;
 	if (0 == g_ice.opt.role)
 	{
@@ -1186,14 +1181,28 @@ void* thread_signal_heart(void *data)
 		attr_type = TYPE_ATTR_GUID_ANSWER;
 	}
 	attr_type = htonl(attr_type);
-	memcpy(send_buffer + offset, &attr_type, sizeof(attr_type));
-	offset += sizeof(attr_type);
+	memcpy(send_buffer + *offset, &attr_type, sizeof(attr_type));
+	*offset += sizeof(attr_type);
+	assert(*offset < buff_max);
 	len = g_ice.opt.guid_offer.slen;
 	len = htonl(len);
-	memcpy(send_buffer + offset, &len, sizeof(len));
-	offset += sizeof(len);
-	memcpy(send_buffer + offset, g_ice.opt.guid_offer.ptr, g_ice.opt.guid_offer.slen);
-	offset += g_ice.opt.guid_offer.slen;
+	memcpy(send_buffer + *offset, &len, sizeof(len));
+	*offset += sizeof(len);
+	assert(*offset < buff_max);
+	memcpy(send_buffer + *offset, g_ice.opt.guid_offer.ptr, g_ice.opt.guid_offer.slen);
+	*offset += g_ice.opt.guid_offer.slen;
+	assert(*offset < buff_max);
+}
+
+void* thread_signal_heart(void *data)
+{
+	assert(data != NULL);
+	addrinfo_t *addr = (addrinfo_t*)data;
+
+	char send_buffer[64] = {0};
+	int offset = 0;
+
+	make_heart_info(send_buffer, 64, &offset);
 
 	while (!g_ice.quit)
 	{
@@ -1232,8 +1241,6 @@ void do_traversal_request(char* data)
 {
 	assert(data != NULL);
 
-
-
 	g_ice.offer_nego = PJ_TRUE;
 }
 
@@ -1266,10 +1273,10 @@ void* do_handle_recv_signal_info(void *data)
 	case MSG_TYPE_HEART:
 		do_heart(data + offset);
 		break;
-	case MSG_TYPE_TRAVERSAL_REQUEST:
+	case MSG_TYPE_TRAVERSAL_REQUEST: //answer-->turn-->offer
 		do_traversal_request(data + offset);
 		break;
-	case MSG_TYPE_TRAVERSAL_RESPONSE:
+	case MSG_TYPE_TRAVERSAL_RESPONSE: //turn-->answer
 		do_traversal_response(data + offset);
 		break;
 	defalut:
@@ -1283,6 +1290,65 @@ void* do_handle_recv_signal_info(void *data)
 	}
 }
 
+//msg type(4B) attr(4B) attr_len(4B) attr_content attr(4B) attr_len(4B) attr_content ...
+
+void make_register_info(char* send_buffer, int buff_max, char* local_info_buffer, int len_local_info, int *offset)
+{
+	*offset = 0;
+
+	int msg_type = MSG_TYPE_REGISTER;
+	msg_type = htonl(msg_type);
+	memcpy(send_buffer + *offset, &msg_type, sizeof(msg_type));
+	*offset += sizeof(msg_type);
+	assert(*offset < buff_max);
+	int type_len = 0;
+
+	int attr;
+	if (0 == g_ice.opt.role)
+	{
+		attr = TYPE_ATTR_GUID_OFFER;
+		attr = htonl(attr);
+		memcpy(send_buffer + *offset, &attr, sizeof(attr));
+		*offset += sizeof(attr);
+		assert(*offset < buff_max);
+		type_len = htonl(g_ice.opt.guid_offer.slen);
+		memcpy(send_buffer + *offset, &type_len, sizeof(type_len));
+		*offset += sizeof(type_len);
+		assert(*offset < buff_max);
+		memcpy(send_buffer + *offset, g_ice.opt.guid_offer.ptr, g_ice.opt.guid_offer.slen);
+		*offset += g_ice.opt.guid_offer.slen;
+		assert(*offset < buff_max);
+	}
+	else
+	{
+		attr = TYPE_ATTR_GUID_ANSWER;
+		attr = htonl(attr);
+		memcpy(send_buffer + *offset, &attr, sizeof(attr));
+		*offset += sizeof(attr);
+		assert(*offset < buff_max);
+		type_len = htonl(g_ice.opt.guid_answer.slen);
+		memcpy(send_buffer + *offset, &type_len, sizeof(type_len));
+		*offset += sizeof(type_len);
+		assert(*offset < buff_max);
+		memcpy(send_buffer + *offset, g_ice.opt.guid_answer.ptr, g_ice.opt.guid_answer.slen);
+		*offset += g_ice.opt.guid_answer.slen;
+		assert(*offset < buff_max);
+	}
+
+	attr = TYPE_ATTR_HOLE_INFO;
+	attr = htonl(attr);
+	memcpy(send_buffer + *offset, &attr, sizeof(attr));
+	*offset += sizeof(attr);
+	assert(*offset < buff_max);
+	type_len = htonl(len_local_info);
+	memcpy(send_buffer + *offset, &type_len, sizeof(type_len));
+	*offset += sizeof(type_len);
+	assert(*offset < buff_max);
+	memcpy(send_buffer + *offset, local_info_buffer, len_local_info);
+	*offset += len_local_info;
+	assert(*offset < buff_max);
+}
+
 void* thread_transmit_signal(void *data)
 {
 	(void)data;
@@ -1294,41 +1360,7 @@ void* thread_transmit_signal(void *data)
 	int offset = 0;
 	char send_buffer[2048] = {0};
 
-	//msg type(4B) attr(4B) attr_len(4B) attr_content attr(4B) attr_len(4B) attr_content ...
-
-	int msg_type = MSG_TYPE_REGISTER;
-	msg_type = htonl(msg_type);
-	memcpy(send_buffer + offset, &msg_type, sizeof(msg_type));
-	offset += sizeof(msg_type);
-	int type_len = 0;
-
-	int attr;
-	if (0 == g_ice.opt.role)
-	{
-		attr = TYPE_ATTR_GUID_OFFER;
-	}
-	else
-	{
-		attr = TYPE_ATTR_GUID_ANSWER;
-	}
-	attr = htonl(attr);
-	memcpy(send_buffer + offset, &attr, sizeof(attr));
-	offset += sizeof(attr);
-	type_len = htonl(g_ice.opt.guid_offer.slen);
-	memcpy(send_buffer + offset, &type_len, sizeof(type_len));
-	offset += sizeof(type_len);
-	memcpy(send_buffer + offset, g_ice.opt.guid_offer.ptr, g_ice.opt.guid_offer.slen);
-	offset += g_ice.opt.guid_offer.slen;
-
-	attr = TYPE_ATTR_HOLE_INFO;
-	attr = htonl(attr);
-	memcpy(send_buffer + offset, &attr, sizeof(attr));
-	offset += sizeof(attr);
-	type_len = htonl(len_local_info);
-	memcpy(send_buffer + offset, &type_len, sizeof(type_len));
-	offset += sizeof(type_len);
-	memcpy(send_buffer + offset, local_info_buffer, len_local_info);
-	offset += len_local_info;
+	make_register_info(send_buffer, 2048, local_info_buffer, len_local_info, &offset);
 
 	//send local info to server.
 	bzero(&g_ice.addr_signal->addr, sizeof(g_ice.addr_signal->addr));
@@ -1405,13 +1437,13 @@ static void answer_traversal()
 	memcpy(send_buffer, &attr_type, sizeof(attr_type));
 	offset += sizeof(attr_type);
 
-	int len = g_ice.opt.guid_offer.slen;
+	int len = g_ice.opt.guid_answer.slen;
 	len = htonl(len);
 	memcpy(send_buffer + offset, &len, sizeof(len));
 	offset += sizeof(len);
 
-	memcpy(send_buffer + offset, g_ice.opt.guid_offer.ptr, g_ice.opt.guid_offer.slen);
-	offset += g_ice.opt.guid_offer.slen;
+	memcpy(send_buffer + offset, g_ice.opt.guid_answer.ptr, g_ice.opt.guid_answer.slen);
+	offset += g_ice.opt.guid_answer.slen;
 
 	attr_type = TYPE_ATTR_GUID_OFFER;
 	attr_type = htonl(attr_type);

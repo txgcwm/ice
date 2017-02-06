@@ -270,12 +270,6 @@ void do_traversal_request(const std::vector<attr_type_value_t> &content, singal_
 	{
 		err("do_traversal_request tell peer: sendto error, err=%d\n", errno);
 	}
-
-	if (NULL != si)
-	{
-		delete si;
-		si = NULL;
-	}
 }
 
 void do_heart(const std::vector<attr_type_value_t> &content, singal_info_t* si)
@@ -322,12 +316,6 @@ void do_heart(const std::vector<attr_type_value_t> &content, singal_info_t* si)
 	if (ret < 0)
 	{
 		err("sendto error, err=%d\n", errno);
-	}
-
-	if (NULL != si)
-	{
-		delete si;
-		si = NULL;
 	}
 }
 
@@ -400,12 +388,6 @@ void do_registe(const std::vector<attr_type_value_t> &content, singal_info_t* si
 	{
 		err("sendto error, err=%d\n", errno);
 	}
-
-	if (NULL != si)
-	{
-		delete si;
-		si = NULL;
-	}
 }
 
 void do_handle_singal_info(int msg_type, const std::vector<attr_type_value_t> &content, singal_info_t* si)
@@ -425,6 +407,12 @@ void do_handle_singal_info(int msg_type, const std::vector<attr_type_value_t> &c
 		break;
 	default:
 		break;
+	}
+
+	if (NULL != si)
+	{
+		delete si;
+		si = NULL;
 	}
 }
 

@@ -26,6 +26,7 @@
 #include <sys/socket.h>
 #include<arpa/inet.h>
 #include <errno.h>
+#include <pthread.h>
 
 #include "pub.h"
 
@@ -35,6 +36,12 @@
  * so that it does't clutter the screen output.
  */
 #define KA_INTERVAL 300
+
+typedef struct addrinfo_s
+{
+	int sockfd;
+	struct sockaddr_in addr;
+}addrinfo_t;
 
 /* This is our global variables */
 static struct app_t
@@ -55,8 +62,8 @@ static struct app_t
 	const char *log_file;
 	pj_bool_t   console_mode;
 	int role;
-	pj_str_t guid;
-	pj_str_t guid_peer;
+	pj_str_t guid_offer;
+	pj_str_t guid_answer;
 	} opt;
 
 	/* Our global variables */
@@ -82,9 +89,11 @@ static struct app_t
 	pj_bool_t quit;
 	pj_bool_t init_success;
 	pj_bool_t session_ready;
-
+	pj_bool_t offer_nego;
+	pj_bool_t answer_nego;
 	int sinal_port;
 	pj_str_t sigal_addr;
+	addrinfo_t *addr_signal;
 } g_ice;
 
 /* Utility to display error messages */
@@ -1152,6 +1161,284 @@ static void icedemo_print_menu(void)
 	puts("+----------------------------------------------------------------------+");
 }
 
+void* thread_signal_heart(void *data)
+{
+	assert(data != NULL);
+	addrinfo_t *addr = (addrinfo_t*)data;
+
+	char send_buffer[64] = {0};
+	int offset = 0;
+
+	int msg_type = MSG_TYPE_HEART;
+	msg_type = htonl(msg_type);
+	memcpy(send_buffer + offset, &msg_type, sizeof(msg_type));
+	offset += sizeof(msg_type);
+	int len = 0;
+	len = htonl(len);
+	memcpy(send_buffer + offset, &len, sizeof(len));
+	int attr_type;
+	if (0 == g_ice.opt.role)
+	{
+		attr_type = TYPE_ATTR_GUID_OFFER;
+	}
+	else
+	{
+		attr_type = TYPE_ATTR_GUID_ANSWER;
+	}
+	attr_type = htonl(attr_type);
+	memcpy(send_buffer + offset, &attr_type, sizeof(attr_type));
+	offset += sizeof(attr_type);
+	len = g_ice.opt.guid_offer.slen;
+	len = htonl(len);
+	memcpy(send_buffer + offset, &len, sizeof(len));
+	offset += sizeof(len);
+	memcpy(send_buffer + offset, g_ice.opt.guid_offer.ptr, g_ice.opt.guid_offer.slen);
+	offset += g_ice.opt.guid_offer.slen;
+
+	while (!g_ice.quit)
+	{
+		int ret = sendto(addr->sockfd, send_buffer, offset, 0, (struct sockaddr *)&addr->addr, sizeof(addr->addr));
+		if (ret < 0)
+		{
+			PJ_LOG(1, (THIS_FILE, "thread_signal_heart:sendto err=%d", errno));
+			break;
+		}
+
+		sleep(5);
+	}
+}
+
+void do_register_response(char* data)
+{
+	assert(data != NULL);
+	int offset = 0;
+
+	int len = 0;
+	memcpy(&len, data + offset, sizeof(len));
+	len = ntohl(len);
+	offset += sizeof(len);
+
+	char value[64] = {0};
+	memcpy(value, data + offset, len);
+}
+
+void do_heart(char* data)
+{
+	assert(data != NULL);
+
+}
+
+void do_traversal_request(char* data)
+{
+	assert(data != NULL);
+
+
+
+	g_ice.offer_nego = PJ_TRUE;
+}
+
+void do_traversal_response(char* data)
+{
+	assert(data != NULL);
+
+	g_ice.answer_nego = PJ_TRUE;
+}
+
+void* do_handle_recv_signal_info(void *data)
+{
+	assert(data != NULL);
+
+	char *msg = (char*)data;
+	int offset = 0;
+
+	int msg_type = 0;
+	memcpy(&msg_type, msg + offset, sizeof(msg_type));
+	msg_type = ntohl(msg_type);
+	offset +=  sizeof(msg_type);
+
+	switch (msg_type)
+	{
+	case MSG_TYPE_REGISTER_RESPONSE:
+		do_register_response(data + offset);
+		break;
+	case MSG_TYPE_HEART:
+		do_heart(data + offset);
+		break;
+	case MSG_TYPE_TRAVERSAL_REQUEST:
+		do_traversal_request(data + offset);
+		break;
+	case MSG_TYPE_TRAVERSAL_RESPONSE:
+		do_traversal_response(data + offset);
+		break;
+	defalut:
+		break;
+	}
+
+	if (data != NULL)
+	{
+		free(data);
+		data = NULL;
+	}
+}
+
+void* thread_transmit_signal(void *data)
+{
+	(void)data;
+
+	char local_info_buffer[1024] = {0};
+	int len_local_info = 0;
+	icedemo_show_ice_auto(local_info_buffer, &len_local_info);
+
+	int offset = 0;
+	char send_buffer[2048] = {0};
+
+	//msg type(4B) attr(4B) attr_len(4B) attr_content attr(4B) attr_len(4B) attr_content ...
+
+	int msg_type = MSG_TYPE_REGISTER;
+	msg_type = htonl(msg_type);
+	memcpy(send_buffer + offset, &msg_type, sizeof(msg_type));
+	offset += sizeof(msg_type);
+	int type_len = 0;
+
+	int attr;
+	if (0 == g_ice.opt.role)
+	{
+		attr = TYPE_ATTR_GUID_OFFER;
+	}
+	else
+	{
+		attr = TYPE_ATTR_GUID_ANSWER;
+	}
+	attr = htonl(attr);
+	memcpy(send_buffer + offset, &attr, sizeof(attr));
+	offset += sizeof(attr);
+	type_len = htonl(g_ice.opt.guid_offer.slen);
+	memcpy(send_buffer + offset, &type_len, sizeof(type_len));
+	offset += sizeof(type_len);
+	memcpy(send_buffer + offset, g_ice.opt.guid_offer.ptr, g_ice.opt.guid_offer.slen);
+	offset += g_ice.opt.guid_offer.slen;
+
+	attr = TYPE_ATTR_HOLE_INFO;
+	attr = htonl(attr);
+	memcpy(send_buffer + offset, &attr, sizeof(attr));
+	offset += sizeof(attr);
+	type_len = htonl(len_local_info);
+	memcpy(send_buffer + offset, &type_len, sizeof(type_len));
+	offset += sizeof(type_len);
+	memcpy(send_buffer + offset, local_info_buffer, len_local_info);
+	offset += len_local_info;
+
+	//send local info to server.
+	bzero(&g_ice.addr_signal->addr, sizeof(g_ice.addr_signal->addr));
+	g_ice.addr_signal->addr.sin_family = AF_INET;
+	g_ice.addr_signal->addr.sin_port = htons(g_ice.sinal_port);
+	inet_pton(AF_INET, g_ice.sigal_addr.ptr, &g_ice.addr_signal->addr.sin_addr);
+
+	g_ice.addr_signal->sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (g_ice.addr_signal->sockfd < 0)
+	{
+		PJ_LOG(1, (THIS_FILE, "SOCK_DGRAM error, err=%d", errno));
+		return NULL;
+	}
+
+	int ret = sendto(g_ice.addr_signal->sockfd, send_buffer, offset, 0, (struct sockaddr *)&g_ice.addr_signal->addr, sizeof(g_ice.addr_signal->addr));
+	if (ret < 0)
+	{
+		PJ_LOG(1, (THIS_FILE, "thread_transmit_signal:sendto error, err=%d", errno));
+		return NULL;
+	}
+
+	pthread_t t_heart;
+	ret = pthread_create(&t_heart, NULL, thread_signal_heart, (void*)g_ice.addr_signal);
+
+	enum{MAX_RECV_LINE = 1024};
+	char msg[MAX_RECV_LINE] = {0};
+
+	while (!g_ice.quit)
+	{
+		memset(msg, 0, MAX_RECV_LINE);
+		int recv_len = recvfrom(g_ice.addr_signal->sockfd, msg, MAX_RECV_LINE, 0, NULL, NULL);
+		if (recv_len < 0)
+		{
+			PJ_LOG(1, (THIS_FILE, "recv from server failed,err=%d", errno));
+		}
+
+		char *msg2 = (char*)malloc(recv_len);
+		memcpy(msg2, msg, recv_len);
+
+		pthread_t t;
+		pthread_create(&t, NULL, do_handle_recv_signal_info, (void*)msg2);
+	}
+
+	pthread_join(t_heart, NULL);
+
+	return NULL;
+}
+
+static void offer_wait_traversal()
+{
+	while (!g_ice.quit)
+	{
+		if (g_ice.offer_nego)
+		{
+			break;
+		}
+		usleep(1000);
+	}
+}
+
+static void answer_request_traversal()
+{
+	char send_buffer[512] = {0};
+	int offset = 0;
+
+	int msg_type = MSG_TYPE_TRAVERSAL_REQUEST;
+	msg_type = htonl(msg_type);
+	memcpy(send_buffer + offset, &msg_type, sizeof(msg_type));
+	offset += sizeof(msg_type);
+
+	int attr_type = TYPE_ATTR_GUID_ANSWER;
+	attr_type = htonl(attr_type);
+	memcpy(send_buffer, &attr_type, sizeof(attr_type));
+	offset += sizeof(attr_type);
+
+	int len = g_ice.opt.guid_offer.slen;
+	len = htonl(len);
+	memcpy(send_buffer + offset, &len, sizeof(len));
+	offset += sizeof(len);
+
+	memcpy(send_buffer + offset, g_ice.opt.guid_offer.ptr, g_ice.opt.guid_offer.slen);
+	offset += g_ice.opt.guid_offer.slen;
+
+	attr_type = TYPE_ATTR_GUID_OFFER;
+	attr_type = htonl(attr_type);
+	memcpy(send_buffer, &attr_type, sizeof(attr_type));
+	offset += sizeof(attr_type);
+
+	len = g_ice.opt.guid_answer.slen;
+	len = htonl(len);
+	memcpy(send_buffer + offset, &len, sizeof(len));
+	offset += sizeof(len);
+
+	memcpy(send_buffer + offset, g_ice.opt.guid_answer.ptr, g_ice.opt.guid_answer.slen);
+	offset += g_ice.opt.guid_answer.slen;
+
+	int ret = sendto(g_ice.addr_signal->sockfd, send_buffer, offset, 0, (struct sockaddr *)&g_ice.addr_signal->addr, sizeof(g_ice.addr_signal->addr));
+	if (ret < 0)
+	{
+		PJ_LOG(1, (THIS_FILE, "answer_request_traversal:sendto error, err=%d", errno));
+		return;
+	}
+}
+
+static void free_ice_additional()
+{
+	if (g_ice.addr_signal != NULL)
+	{
+		free(g_ice.addr_signal);
+		g_ice.addr_signal = NULL;
+	}
+}
 
 static void icedemo_auto(void)
 {
@@ -1160,6 +1447,11 @@ static void icedemo_auto(void)
 	g_ice.quit = PJ_FALSE;
 	g_ice.init_success = PJ_FALSE;
 	g_ice.session_ready = PJ_FALSE;
+	g_ice.offer_nego = PJ_FALSE;
+	g_ice.answer_nego = PJ_FALSE;
+	g_ice.addr_signal = NULL;
+	g_ice.addr_signal = (addrinfo_t*)malloc(sizeof(addrinfo_t));
+	assert(g_ice.addr_signal != NULL);
 
 	icedemo_create_instance();
 
@@ -1182,74 +1474,30 @@ static void icedemo_auto(void)
 		goto end;
 	}
 
-	char local_info_buffer[1024] = {0};
-	int len_local_info = 0;
-	icedemo_show_ice_auto(local_info_buffer, &len_local_info);
-
-	int offset = 0;
-	char send_buffer[2048] = {0};
-
-	//msg type(4B) attr(4B) attr_len(4B) attr_content attr(4B) attr_len(4B) attr_content ...
-
-	int msg_type = MSG_TYPE_REGISTER;
-	msg_type = htonl(msg_type);
-	memcpy(send_buffer + offset, &msg_type, sizeof(msg_type));
-	offset += sizeof(msg_type);
-	int type_len = 0;
-
-	msg_type = TYPE_ATTR_GUID;
-	msg_type = htonl(msg_type);
-	memcpy(send_buffer + offset, &msg_type, sizeof(msg_type));
-	offset += sizeof(msg_type);
-	type_len = htonl(g_ice.opt.guid.slen);
-	memcpy(send_buffer + offset, &type_len, sizeof(type_len));
-	offset += sizeof(type_len);
-	memcpy(send_buffer + offset, g_ice.opt.guid.ptr, g_ice.opt.guid.slen);
-	offset += g_ice.opt.guid.slen;
-
-	msg_type = TYPE_ATTR_LOCAL_INFO;
-	msg_type = htonl(msg_type);
-	memcpy(send_buffer + offset, &msg_type, sizeof(msg_type));
-	offset += sizeof(msg_type);
-	type_len = htonl(len_local_info);
-	memcpy(send_buffer + offset, &type_len, sizeof(type_len));
-	offset += sizeof(type_len);
-	memcpy(send_buffer + offset, local_info_buffer, len_local_info);
-	offset += len_local_info;
-
-	//send local info to server.
-	int sockfd;
-	struct sockaddr_in servaddr;
-	bzero(&servaddr, sizeof(servaddr));
-	servaddr.sin_family = AF_INET;
-	servaddr.sin_port = htons(g_ice.sinal_port);
-	inet_pton(AF_INET, g_ice.sigal_addr.ptr, &servaddr.sin_addr);
-
-	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (sockfd < 0)
+	pthread_t t_signal_transmit;
+	int ret = pthread_create(&t_signal_transmit, NULL, thread_transmit_signal, NULL);
+	if (ret != 0)
 	{
-		PJ_LOG(1, (THIS_FILE, "SOCK_DGRAM error, err=%d", errno));
 		goto end;
 	}
 
-	sendto(sockfd, send_buffer, offset, 0, (struct sockaddr *)&servaddr, sizeof(servaddr));
-
-	enum{MAX_RECV_LINE = 1024};
-	char msg[MAX_RECV_LINE] = {0};
-	int recv_len = recvfrom(sockfd, msg, MAX_RECV_LINE, 0, NULL, NULL);
-	if (recv_len < 0)
+	if (0 == g_ice.opt.role)
 	{
-		PJ_LOG(1, (THIS_FILE, "recv from server failed,err=%d", errno));
+		offer_wait_traversal();
+	}
+	else
+	{
+		answer_request_traversal();
 	}
 
-	printf("recv msg from server +++++++++++++++++++++++++++++%s\n", msg);
-
-	while (g_ice.quit)
+	while (!g_ice.quit)
 	{
-		pj_thread_sleep(1);
+		sleep(1);
 	}
 
 end:
+	pthread_join(t_signal_transmit, NULL);
+	free_ice_additional();
 	icedemo_stop_session();
 	icedemo_destroy_instance();
 }
@@ -1462,10 +1710,10 @@ int main(int argc, char *argv[])
 		g_ice.opt.role = atoi(pj_optarg);//0-offer, 1-answer
 		break;
 	case 'g':
-		g_ice.opt.guid = pj_str(pj_optarg);
+		g_ice.opt.guid_offer = pj_str(pj_optarg);
 		break;
 	case 'G':
-		g_ice.opt.guid_peer = pj_str(pj_optarg);
+		g_ice.opt.guid_answer = pj_str(pj_optarg);
 		break;
 	default:
 		printf("Argument \"%s\" is not valid. Use -h to see help",  argv[pj_optind]);

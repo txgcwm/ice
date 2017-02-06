@@ -59,10 +59,23 @@ typedef struct client_addr_s
 	}
 }client_addr_t;
 
+typedef struct hole_info_s
+{
+	std::string hole_info;
+	client_addr_t cli;
+	time_t tm;
+
+	hole_info_s()
+	{
+		tm = time(NULL);
+		memset(&cli, 0, sizeof(cli));
+	}
+}hole_info_t;
+
 typedef struct singal_info_s
 {
 	client_addr_t cli;
-	std::string msg;
+	std::string recv_origin_msg;
 }singal_info_t;
 
 typedef struct attr_type_value_s
@@ -73,6 +86,10 @@ typedef struct attr_type_value_s
 
 static pj_caching_pool g_cp;
 static pj_bool_t g_quit = PJ_FALSE;
+
+
+static std::map<std::string, hole_info_t*> *g_info_hole;
+static pthread_mutex_t *g_mu_hole;
 
 static void SigUsr(int signo)
 {
@@ -144,10 +161,12 @@ static void dump_status(pj_turn_srv *srv)
 	}
 }
 
-void do_registe(const std::vector<attr_type_value_t> &content)
+void do_traversal_request(const std::vector<attr_type_value_t> &content, singal_info_t* si)
 {
-	std::string guid;
-	std::string local_info;
+	assert(si != NULL);
+
+	std::string guid_answer;
+	std::string guid_offer;
 
 	for (std::vector<attr_type_value_t>::const_iterator iter = content.begin();
 		 iter != content.end();
@@ -156,24 +175,241 @@ void do_registe(const std::vector<attr_type_value_t> &content)
 		const attr_type_value_t& item(*iter);
 		switch (item.type)
 		{
-		case TYPE_ATTR_GUID:
-			guid = item.value;
+		case TYPE_ATTR_GUID_ANSWER:
+			guid_answer = item.value;
 			break;
-		case TYPE_ATTR_LOCAL_INFO:
-			local_info = item.value;
+		case TYPE_ATTR_GUID_OFFER:
+			guid_offer = item.value;
 			break;
 		default:
 			break;
 		}
 	}
+
+	std::string hole_answer;
+	std::string hole_offer;
+	client_addr_t cli_offer;
+
+	pthread_mutex_lock(g_mu_hole);
+	{
+		std::map<std::string, hole_info_t*>::iterator iter = g_info_hole->find(guid_offer);
+		if (iter != g_info_hole->end())
+		{
+			hole_offer = iter->second->hole_info;
+			memcpy(&cli_offer, &iter->second->cli, sizeof(client_addr_t));
+		}
+
+		iter = g_info_hole->find(guid_answer);
+		if (iter != g_info_hole->end())
+		{
+			hole_answer = iter->second->hole_info;
+		}
+	}
+	pthread_mutex_unlock(g_mu_hole);
+
+	char buff[1024] = {0};
+	int offset = 0;
+
+	int msg_type = MSG_TYPE_TRAVERSAL_RESPONSE;
+	msg_type = htonl(msg_type);
+	memcpy(buff + offset, &msg_type, sizeof(msg_type));
+	offset += sizeof(msg_type);
+
+	int result = 0;
+	if (hole_offer.length() > 0)
+	{
+		result = ERROR_SUCCESS;
+		result = htonl(result);
+		memcpy(buff + offset, &result, sizeof(result));
+		offset += sizeof(result);
+
+		int attr = TYPE_ATTR_HOLE_INFO;
+		attr = htonl(attr);
+		memcpy(buff + offset, &attr, sizeof(attr));
+		offset += sizeof(attr);
+
+		int len = hole_offer.length();
+		len = htonl(len);
+		memcpy(buff + offset, &len, sizeof(len));
+		offset += sizeof(len);
+
+		memcpy(buff + offset, hole_offer.c_str(), hole_offer.length());
+		offset += hole_offer.length();
+	}
+	else
+	{
+		result = ERROR_PEER_INFO_NOT_FOUND;
+		result = htonl(result);
+		memcpy(buff + offset, &result, sizeof(result));
+		offset += sizeof(result);
+	}
+
+	int ret = sendto(si->cli.sockfd, buff, offset, 0, (struct sockaddr *)&si->cli.cliaddr, si->cli.len);
+	if (ret < 0)
+	{
+		err("do_traversal_request: sendto error, err=%d\n", errno);
+	}
+
+	if (NULL != si)
+	{
+		delete si;
+		si = NULL;
+	}
+
+	//tell peer to nego.
+	if (result = ERROR_SUCCESS)
+	{
+		memset(buff, 0, 1024);
+		offset = 0;
+
+		msg_type = MSG_TYPE_TRAVERSAL_REQUEST;
+		msg_type = htonl(msg_type);
+		memcpy(buff + offset, &msg_type, sizeof(msg_type));
+		offset += sizeof(msg_type);
+
+		memcpy(buff + offset, hole_answer.c_str(), hole_answer.length());
+		offset += hole_answer.length();
+	}
+
+	ret = sendto(cli_offer.sockfd, buff, offset, 0, (struct sockaddr *)&cli_offer.cliaddr, cli_offer.len);
+	if (ret < 0)
+	{
+		err("do_traversal_request tell peer: sendto error, err=%d\n", errno);
+	}
 }
 
-void do_handle_singal_info(int msg_type, const std::vector<attr_type_value_t> &content)
+void do_heart(const std::vector<attr_type_value_t> &content, singal_info_t* si)
 {
+	assert(si != NULL);
+
+	std::string guid;
+
+	for (std::vector<attr_type_value_t>::const_iterator iter = content.begin();
+		 iter != content.end();
+		 ++iter)
+	{
+		const attr_type_value_t& item(*iter);
+		switch (item.type)
+		{
+		case TYPE_ATTR_GUID_OFFER: //yes, that it is.
+		case TYPE_ATTR_GUID_ANSWER:
+			guid = item.value;
+			break;
+		default:
+			break;
+		}
+	}
+
+	//update the timestamp in global map
+	pthread_mutex_lock(g_mu_hole);
+	{
+		std::map<std::string, hole_info_t*>::iterator iter = g_info_hole->find(guid);
+		if (iter != g_info_hole->end())
+		{
+			iter->second->tm = time(NULL);
+		}
+	}
+	pthread_mutex_unlock(g_mu_hole);
+
+	if (NULL != si)
+	{
+		delete si;
+		si = NULL;
+	}
+
+
+}
+
+void do_registe(const std::vector<attr_type_value_t> &content, singal_info_t* si)
+{
+	assert(si != NULL);
+
+	std::string guid;
+	hole_info_t *hole = new hole_info_t;
+	assert(hole != NULL);
+
+	for (std::vector<attr_type_value_t>::const_iterator iter = content.begin();
+		 iter != content.end();
+		 ++iter)
+	{
+		const attr_type_value_t& item(*iter);
+		switch (item.type)
+		{
+		case TYPE_ATTR_GUID_OFFER:  //yes, that it is.
+		case TYPE_ATTR_GUID_ANSWER:
+			guid = item.value;
+			break;
+		case TYPE_ATTR_HOLE_INFO:
+			hole->hole_info = item.value;
+			break;
+		default:
+			break;
+		}
+	}
+
+	memcpy(&hole->cli, &si->cli, sizeof(si->cli));
+	if (NULL != si)
+	{
+		delete si;
+		si = NULL;
+	}
+
+	//insert into golbal map
+	{
+		pthread_mutex_lock(g_mu_hole);
+
+		std::map<std::string, hole_info_t*>::iterator iter = g_info_hole->find(guid);
+		//if has insert, delete it first to ensure the latest.
+		if ( iter!= g_info_hole->end())
+		{
+			if (iter->second != NULL)
+			{
+				delete iter->second;
+				iter->second = NULL;
+			}
+			g_info_hole->erase(iter);
+		}
+
+		g_info_hole->insert(std::make_pair(guid, hole));//there is a delete thread to detect if the info has timeout.
+
+		pthread_mutex_unlock(g_mu_hole);
+	}
+
+	char buff_response[64] = {0};
+	int offset = 0;
+	int msg_type = MSG_TYPE_REGISTER_RESPONSE;
+	msg_type = htonl(msg_type);
+	memcpy(buff_response + offset, &msg_type, sizeof(msg_type));
+	offset += sizeof(msg_type);
+	std::string value = "0";
+	int len = value.length();
+	len = htonl(len);
+	memcpy(buff_response + offset, &len, sizeof(len));
+	offset += sizeof(len);
+	memcpy(buff_response + offset, value.c_str(), value.length());
+	offset += value.length();
+
+	int ret = sendto(hole->cli.sockfd, buff_response, offset, 0, (struct sockaddr *)&hole->cli.cliaddr, hole->cli.len);
+	if (ret < 0)
+	{
+		err("sendto error, err=%d\n", errno);
+	}
+}
+
+void do_handle_singal_info(int msg_type, const std::vector<attr_type_value_t> &content, singal_info_t* si)
+{
+	assert(si != NULL);
+
 	switch (msg_type)
 	{
 	case MSG_TYPE_REGISTER:
-		do_registe(content);
+		do_registe(content, si);
+		break;
+	case MSG_TYPE_HEART:
+		do_heart(content, si);
+		break;
+	case MSG_TYPE_TRAVERSAL_REQUEST:
+
 		break;
 	default:
 		break;
@@ -187,37 +423,32 @@ void* handle_singal_info(void* data)
 
 	unsigned i = 0;
 	int msg_type = 0;
-	memcpy(&msg_type, &signal_info->msg[0], sizeof(msg_type));
+	memcpy(&msg_type, &signal_info->recv_origin_msg[0], sizeof(msg_type));
+	msg_type = ntohl(msg_type);
 	i += sizeof(msg_type);
 
 	std::vector<attr_type_value_t> vec_attrs;
 
-	for(; i < signal_info->msg.length();)
+	for(; i < signal_info->recv_origin_msg.length();)
 	{
 		attr_type_value_t attr;
 
-		memcpy(&attr.type, &signal_info->msg[i], sizeof(attr.type));
+		memcpy(&attr.type, &signal_info->recv_origin_msg[i], sizeof(attr.type));
 		attr.type = ntohl(attr.type);
 		i += sizeof(attr.type);
 
 		int len = 0;
-		memcpy(&len, &signal_info->msg[i], sizeof(len));
+		memcpy(&len, &signal_info->recv_origin_msg[i], sizeof(len));
 		len = ntohl(len);
 		i += sizeof(len);
 
-		attr.value.assign(&signal_info->msg[i], len);
+		attr.value.assign(&signal_info->recv_origin_msg[i], len);
 		i+= len;
 
 		vec_attrs.push_back(attr);
 	}
 
-	do_handle_singal_info(msg_type, vec_attrs);
-
-	int ret = sendto(signal_info->cli.sockfd, "success", strlen("success"), 0, (struct sockaddr *)&signal_info->cli.cliaddr, signal_info->cli.len);
-	if (ret < 0)
-	{
-		err("sendto error, err=%d\n", errno);
-	}
+	do_handle_singal_info(msg_type, vec_attrs, signal_info);
 }
 
 void* thread_singal_transmit(void*)
@@ -246,11 +477,44 @@ void* thread_singal_transmit(void*)
 			err("recv from error, errno=%d", errno);
 		}
 
-		singal_info->msg.assign(msg, recv_len);
+		singal_info->recv_origin_msg.assign(msg, recv_len);
 		singal_info->cli.sockfd = sockfd;
 
 		pthread_t t;
 		pthread_create(&t, NULL, handle_singal_info, (void*)singal_info);
+	}
+}
+
+void* thread_detect_holeinfo_timeout(void *)
+{
+	while (!g_quit)
+	{
+		time_t tnow = time(NULL);
+		pthread_mutex_lock(g_mu_hole);
+		{
+			for (unsigned i = 0; i < g_info_hole->size(); ++i)
+			{
+				for (std::map<std::string, hole_info_t*>::iterator iter = g_info_hole->begin();
+					 iter != g_info_hole->end();
+					 ++iter)
+				{
+					if (tnow - iter->second->tm > 10 * 60) //10min
+					{
+						if (NULL != iter->second)
+						{
+							delete iter->second;
+							iter->second = NULL;
+						}
+
+						g_info_hole->erase(iter);
+						break;
+					}
+				}
+			}
+		}
+		pthread_mutex_unlock(g_mu_hole);
+
+		sleep(1);
 	}
 }
 
@@ -272,12 +536,25 @@ int main(int argc, char* argv[])
 		return err("daemon failed.", errno);
 	}
 
+	g_info_hole = new std::map<std::string, hole_info_t*>;
+	assert(g_info_hole);
+	g_mu_hole = new pthread_mutex_t;
+	assert(g_mu_hole != NULL);
+	pthread_mutex_init(g_mu_hole, NULL);
+
 	//start singal udp listen. just used to transmit the info.
 	pthread_t t_sigal;
 	int ret = pthread_create(&t_sigal, NULL, thread_singal_transmit, NULL);
 	if (ret != 0)
 	{
 		return err("create singal thread failed.", errno);
+	}
+
+	pthread_t t_detect;
+	ret = pthread_create(&t_detect, NULL, thread_detect_holeinfo_timeout, NULL);
+	if (ret < 0)
+	{
+		return err("create detect thread failed, err=%d", errno);
 	}
 
 	pj_turn_srv *srv = NULL;
@@ -334,7 +611,7 @@ int main(int argc, char* argv[])
 
 	while (!g_quit)
 	{
-		pj_thread_sleep(100);
+		sleep(2);
 	}
 
 	pj_turn_srv_destroy(srv);
@@ -342,6 +619,7 @@ int main(int argc, char* argv[])
 	pj_shutdown();
 
 	pthread_join(t_sigal, NULL);
+	pthread_join(t_detect, NULL);
 
 	return 0;
 }

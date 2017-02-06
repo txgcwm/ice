@@ -1241,6 +1241,8 @@ void do_traversal_response(char* data)
 {
 	assert(data != NULL);
 
+
+
 	g_ice.answer_nego = PJ_TRUE;
 }
 
@@ -1375,19 +1377,20 @@ void* thread_transmit_signal(void *data)
 	return NULL;
 }
 
-static void offer_wait_traversal()
+static void offer_traversal()
 {
 	while (!g_ice.quit)
 	{
 		if (g_ice.offer_nego)
 		{
+			icedemo_start_nego();
 			break;
 		}
 		usleep(1000);
 	}
 }
 
-static void answer_request_traversal()
+static void answer_traversal()
 {
 	char send_buffer[512] = {0};
 	int offset = 0;
@@ -1428,6 +1431,16 @@ static void answer_request_traversal()
 	{
 		PJ_LOG(1, (THIS_FILE, "answer_request_traversal:sendto error, err=%d", errno));
 		return;
+	}
+
+	while (!g_ice.quit)
+	{
+		if (g_ice.answer_nego)
+		{
+			icedemo_start_nego();
+			break;
+		}
+		usleep(1000);
 	}
 }
 
@@ -1483,11 +1496,11 @@ static void icedemo_auto(void)
 
 	if (0 == g_ice.opt.role)
 	{
-		offer_wait_traversal();
+		offer_traversal();
 	}
 	else
 	{
-		answer_request_traversal();
+		answer_traversal();
 	}
 
 	while (!g_ice.quit)

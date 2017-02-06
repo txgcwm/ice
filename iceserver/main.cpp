@@ -250,12 +250,6 @@ void do_traversal_request(const std::vector<attr_type_value_t> &content, singal_
 		err("do_traversal_request: sendto error, err=%d\n", errno);
 	}
 
-	if (NULL != si)
-	{
-		delete si;
-		si = NULL;
-	}
-
 	//tell peer to nego.
 	if (result = ERROR_SUCCESS)
 	{
@@ -275,6 +269,12 @@ void do_traversal_request(const std::vector<attr_type_value_t> &content, singal_
 	if (ret < 0)
 	{
 		err("do_traversal_request tell peer: sendto error, err=%d\n", errno);
+	}
+
+	if (NULL != si)
+	{
+		delete si;
+		si = NULL;
 	}
 }
 
@@ -311,13 +311,24 @@ void do_heart(const std::vector<attr_type_value_t> &content, singal_info_t* si)
 	}
 	pthread_mutex_unlock(g_mu_hole);
 
+	char buff[64] = {0};
+	int offset = 0;
+	int msg_type = MSG_TYPE_HEART;
+	msg_type = htonl(msg_type);
+	memcpy(buff + offset, &msg_type, sizeof(msg_type));
+	offset += sizeof(msg_type);
+
+	int ret = sendto(si->cli.sockfd, buff, offset, 0, (struct sockaddr *)&si->cli.cliaddr, si->cli.len);
+	if (ret < 0)
+	{
+		err("sendto error, err=%d\n", errno);
+	}
+
 	if (NULL != si)
 	{
 		delete si;
 		si = NULL;
 	}
-
-
 }
 
 void do_registe(const std::vector<attr_type_value_t> &content, singal_info_t* si)
@@ -347,12 +358,7 @@ void do_registe(const std::vector<attr_type_value_t> &content, singal_info_t* si
 		}
 	}
 
-	memcpy(&hole->cli, &si->cli, sizeof(si->cli));
-	if (NULL != si)
-	{
-		delete si;
-		si = NULL;
-	}
+	memcpy(&hole->cli, &si->cli, sizeof(si->cli));	
 
 	//insert into golbal map
 	{
@@ -394,6 +400,12 @@ void do_registe(const std::vector<attr_type_value_t> &content, singal_info_t* si
 	{
 		err("sendto error, err=%d\n", errno);
 	}
+
+	if (NULL != si)
+	{
+		delete si;
+		si = NULL;
+	}
 }
 
 void do_handle_singal_info(int msg_type, const std::vector<attr_type_value_t> &content, singal_info_t* si)
@@ -409,7 +421,7 @@ void do_handle_singal_info(int msg_type, const std::vector<attr_type_value_t> &c
 		do_heart(content, si);
 		break;
 	case MSG_TYPE_TRAVERSAL_REQUEST:
-
+		do_traversal_request(content, si);
 		break;
 	default:
 		break;

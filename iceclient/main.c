@@ -94,8 +94,8 @@ static struct app_t
 	pj_bool_t offer_can_nego;
 	pj_bool_t answer_can_nego;
 	pj_bool_t nego_success;
-	int sinal_port;
-	pj_str_t sigal_addr;
+	int signal_port;
+	pj_str_t signal_addr;
 	addrinfo_t *addr_signal;
 } g_ice;
 
@@ -1663,8 +1663,8 @@ void* thread_transmit_signal(void *data)
 	//send local info to server.
 	bzero(&g_ice.addr_signal->addr, sizeof(g_ice.addr_signal->addr));
 	g_ice.addr_signal->addr.sin_family = AF_INET;
-	g_ice.addr_signal->addr.sin_port = htons(g_ice.sinal_port);
-	inet_pton(AF_INET, g_ice.sigal_addr.ptr, &g_ice.addr_signal->addr.sin_addr);
+	g_ice.addr_signal->addr.sin_port = htons(g_ice.signal_port);
+	inet_pton(AF_INET, g_ice.signal_addr.ptr, &g_ice.addr_signal->addr.sin_addr);
 
 	g_ice.addr_signal->sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (g_ice.addr_signal->sockfd < 0)
@@ -2036,6 +2036,8 @@ int main(int argc, char *argv[])
 	{ "input-role",					1, 0, 'i'},
 	{ "guid",    					1, 0, 'g'},
 	{ "guid-peer",					1, 0, 'G'},
+	{ "signal-addr",				1, 0, 'S'},
+	{ "signal-port",				1, 0, 'P'},
 
 	};
 	int c, opt_id;
@@ -2043,8 +2045,10 @@ int main(int argc, char *argv[])
 
 	g_ice.opt.comp_cnt = 1;
 	g_ice.opt.max_host = -1;
+	memset(&g_ice.signal_addr, 0, sizeof(pj_str_t));
+	g_ice.signal_port = 0;
 
-	while((c=pj_getopt_long(argc,argv, "i:c:n:s:t:u:p:H:L:g:G:hTFRCD", long_options, &opt_id))!=-1) {
+	while((c=pj_getopt_long(argc,argv, "i:c:n:s:t:u:p:H:L:g:G:S:P:hTFRCD", long_options, &opt_id))!=-1) {
 	switch (c) {
 	case 'c':
 		g_ice.opt.comp_cnt = atoi(pj_optarg);
@@ -2101,14 +2105,23 @@ int main(int argc, char *argv[])
 	case 'G':
 		g_ice.opt.guid_answer = pj_str(pj_optarg);
 		break;
+	case 'S':
+		g_ice.signal_addr = pj_str(pj_optarg);
+		break;
+	case 'P':
+		g_ice.signal_port = atoi(pj_optarg);
+		break;
 	default:
 		printf("Argument \"%s\" is not valid. Use -h to see help",  argv[pj_optind]);
 		return 1;
 	}
 	}
 
-	g_ice.sinal_port = 34781;
-	g_ice.sigal_addr = pj_str("127.0.0.1");
+	if (0 == g_ice.signal_port || 0 == g_ice.signal_addr.slen)
+	{
+		printf("no singal addr or port? please set it .\n");
+		return 1;
+	}
 
 	status = icedemo_init();
 	if (status != PJ_SUCCESS)

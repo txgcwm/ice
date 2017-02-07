@@ -251,7 +251,7 @@ void do_traversal_request(const std::vector<attr_type_value_t> &content, singal_
 	}
 
 	//tell peer to nego.
-	if (result = ERROR_SUCCESS)
+	if (ERROR_SUCCESS == result)
 	{
 		memset(buff, 0, 1024);
 		offset = 0;
@@ -260,6 +260,16 @@ void do_traversal_request(const std::vector<attr_type_value_t> &content, singal_
 		msg_type = htonl(msg_type);
 		memcpy(buff + offset, &msg_type, sizeof(msg_type));
 		offset += sizeof(msg_type);
+
+		int attr = TYPE_ATTR_HOLE_INFO;
+		attr = htonl(attr);
+		memcpy(buff + offset, &attr, sizeof(attr));
+		offset += offset;
+
+		int len = hole_answer.length();
+		len = htonl(len);
+		memcpy(buff + offset, &len, sizeof(len));
+		offset += sizeof(len);
 
 		memcpy(buff + offset, hole_answer.c_str(), hole_answer.length());
 		offset += hole_answer.length();

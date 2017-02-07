@@ -90,7 +90,7 @@ static struct app_t
 	pj_bool_t init_success;
 	pj_bool_t session_ready;
 	pj_bool_t offer_nego;
-	pj_bool_t answer_nego;
+	pj_bool_t answer_nego;	
 	int sinal_port;
 	pj_str_t sigal_addr;
 	addrinfo_t *addr_signal;
@@ -1238,8 +1238,28 @@ void do_heart(char* data)
 }
 
 void do_traversal_request(char* data)
-{
+{	
 	assert(data != NULL);
+
+	int offset = 0;
+
+	int attr = 0;
+	memcpy(&attr, data + offset, sizeof(attr));
+	attr = ntohl(attr);
+	offset += sizeof(attr);
+
+	if (attr != TYPE_ATTR_HOLE_INFO)
+	{
+		return;
+	}
+
+	int len = 0;
+	memcpy(&len, data + offset, sizeof(len));
+	len = ntohl(len);
+	offset += sizeof(len);
+
+	char hole_info[1024] = {0};
+	memcpy(hole_info, data + offset, len);
 
 	g_ice.offer_nego = PJ_TRUE;
 }
@@ -1248,7 +1268,36 @@ void do_traversal_response(char* data)
 {
 	assert(data != NULL);
 
+	int offset = 0;
 
+	int err_code = 0;
+	memcpy(&err_code, data + offset, sizeof(err_code));
+	err_code = ntohl(err_code);
+	offset += sizeof(err_code);
+
+	if (err_code != ERROR_SUCCESS)
+	{
+		PJ_LOG(1, (THIS_FILE, "do_traversal_response error: err=%d", err_code));
+		return;
+	}
+
+	int attr = 0;
+	memcpy(&attr, data + offset, sizeof(attr));
+	attr = ntohl(attr);
+	offset += sizeof(attr);
+
+	if (attr != TYPE_ATTR_HOLE_INFO)
+	{
+		return;
+	}
+
+	int len = 0;
+	memcpy(&len, data + offset, sizeof(len));
+	len = ntohl(len);
+	offset += sizeof(len);
+
+	char hole_info[1024] = {0};
+	memcpy(hole_info, data + offset, len);
 
 	g_ice.answer_nego = PJ_TRUE;
 }
@@ -1268,16 +1317,16 @@ void* do_handle_recv_signal_info(void *data)
 	switch (msg_type)
 	{
 	case MSG_TYPE_REGISTER_RESPONSE:
-		do_register_response(data + offset);
+		do_register_response(msg + offset);
 		break;
 	case MSG_TYPE_HEART:
-		do_heart(data + offset);
+		do_heart(msg + offset);
 		break;
 	case MSG_TYPE_TRAVERSAL_REQUEST: //answer-->turn-->offer
-		do_traversal_request(data + offset);
+		do_traversal_request(msg + offset);
 		break;
 	case MSG_TYPE_TRAVERSAL_RESPONSE: //turn-->answer
-		do_traversal_response(data + offset);
+		do_traversal_response(msg + offset);
 		break;
 	defalut:
 		break;
@@ -1434,7 +1483,7 @@ static void answer_traversal()
 
 	int attr_type = TYPE_ATTR_GUID_ANSWER;
 	attr_type = htonl(attr_type);
-	memcpy(send_buffer, &attr_type, sizeof(attr_type));
+	memcpy(send_buffer + offset, &attr_type, sizeof(attr_type));
 	offset += sizeof(attr_type);
 
 	int len = g_ice.opt.guid_answer.slen;
@@ -1447,7 +1496,7 @@ static void answer_traversal()
 
 	attr_type = TYPE_ATTR_GUID_OFFER;
 	attr_type = htonl(attr_type);
-	memcpy(send_buffer, &attr_type, sizeof(attr_type));
+	memcpy(send_buffer + offset, &attr_type, sizeof(attr_type));
 	offset += sizeof(attr_type);
 
 	len = g_ice.opt.guid_answer.slen;
@@ -1455,14 +1504,14 @@ static void answer_traversal()
 	memcpy(send_buffer + offset, &len, sizeof(len));
 	offset += sizeof(len);
 
-	memcpy(send_buffer + offset, g_ice.opt.guid_answer.ptr, g_ice.opt.guid_answer.slen);
-	offset += g_ice.opt.guid_answer.slen;
+	memcpy(send_buffer + offset, g_ice.opt.guid_offer.ptr, g_ice.opt.guid_offer.slen);
+	offset += g_ice.opt.guid_offer.slen;
 
 	int ret = sendto(g_ice.addr_signal->sockfd, send_buffer, offset, 0, (struct sockaddr *)&g_ice.addr_signal->addr, sizeof(g_ice.addr_signal->addr));
 	if (ret < 0)
 	{
 		PJ_LOG(1, (THIS_FILE, "answer_request_traversal:sendto error, err=%d", errno));
-		return;
+		return ;
 	}
 
 	while (!g_ice.quit)
@@ -1496,6 +1545,7 @@ static void icedemo_auto(void)
 	g_ice.answer_nego = PJ_FALSE;
 	g_ice.addr_signal = NULL;
 	g_ice.addr_signal = (addrinfo_t*)malloc(sizeof(addrinfo_t));
+	bzero(g_ice.addr_signal, sizeof(addrinfo_t));
 	assert(g_ice.addr_signal != NULL);
 
 	icedemo_create_instance();
@@ -1532,7 +1582,16 @@ static void icedemo_auto(void)
 	}
 	else
 	{
-		answer_traversal();
+		cnt  = 0;
+		while (++cnt < 15 * 1000 && !g_ice.quit)
+		{
+			if (g_ice.addr_signal->sockfd > 0)
+			{
+				answer_traversal();
+				break;
+			}
+			usleep(1000);
+		}
 	}
 
 	while (!g_ice.quit)

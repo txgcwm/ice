@@ -43,6 +43,17 @@ typedef struct addrinfo_s
 	struct sockaddr_in addr;
 }addrinfo_t;
 
+/* Variables to store parsed remote ICE info */
+typedef struct remote_info_s
+{
+	char		 ufrag[80];
+	char		 pwd[80];
+	unsigned	 comp_cnt;
+	pj_sockaddr	 def_addr[PJ_ICE_MAX_COMP];
+	unsigned	 cand_cnt;
+	pj_ice_sess_cand cand[PJ_ICE_ST_MAX_CAND];
+} remote_info_t;
+
 /* This is our global variables */
 static struct app_t
 {
@@ -75,22 +86,14 @@ static struct app_t
 	pj_ice_strans	*icest;
 	FILE		*log_fhnd;
 
-	/* Variables to store parsed remote ICE info */
-	struct rem_info
-	{
-	char		 ufrag[80];
-	char		 pwd[80];
-	unsigned	 comp_cnt;
-	pj_sockaddr	 def_addr[PJ_ICE_MAX_COMP];
-	unsigned	 cand_cnt;
-	pj_ice_sess_cand cand[PJ_ICE_ST_MAX_CAND];
-	} rem;
+	remote_info_t rem;
 
 	pj_bool_t quit;
 	pj_bool_t init_success;
 	pj_bool_t session_ready;
-	pj_bool_t offer_nego;
-	pj_bool_t answer_nego;	
+	pj_bool_t offer_can_nego;
+	pj_bool_t answer_can_nego;
+	pj_bool_t nego_success;
 	int sinal_port;
 	pj_str_t sigal_addr;
 	addrinfo_t *addr_signal;
@@ -284,6 +287,11 @@ static void cb_on_ice_complete(pj_ice_strans *ice_st,
 	if(status == PJ_SUCCESS && op == PJ_ICE_STRANS_OP_INIT)
 	{
 		g_ice.init_success = PJ_TRUE;
+	}
+
+	if (status == PJ_SUCCESS && op == PJ_ICE_STRANS_OP_NEGOTIATION)
+	{
+		g_ice.nego_success = PJ_TRUE;
 	}
 }
 
@@ -803,6 +811,243 @@ static void icedemo_show_ice(void)
 }
 
 
+static void icedemo_input_remote2(char* msg, int msg_len)
+{
+	assert(msg != NULL);
+
+	char linebuf[80];
+	unsigned media_cnt = 0;
+	unsigned comp0_port = 0;
+	char     comp0_addr[80];
+	pj_bool_t done = PJ_FALSE;
+
+	reset_rem_info();
+
+	comp0_addr[0] = '\0';
+
+	char* penter = msg;
+	while (!done)
+	{
+		pj_size_t len;
+		char *line;
+
+		//from console input.
+//		{
+//			if (fgets(linebuf, sizeof(linebuf), stdin)==NULL)
+//				break;
+//		}
+
+		{
+
+			bzero(linebuf, 80);
+			char* penter_tmp = strchr(penter, '\n');
+			if (NULL == penter_tmp)
+			{
+				break;
+			}
+
+			memcpy(linebuf, penter, penter_tmp - penter + 1);
+			penter = penter_tmp + 1;
+		}
+
+		len = strlen(linebuf);
+		while (len && (linebuf[len-1] == '\r' || linebuf[len-1] == '\n'))
+			linebuf[--len] = '\0';
+
+		line = linebuf;
+		while (len && pj_isspace(*line))
+			++line, --len;
+
+		if (len==0)
+			break;
+
+		/* Ignore subsequent media descriptors */
+		if (media_cnt > 1)
+			continue;
+
+		switch (line[0])
+		{
+		case 'm':
+			{
+				int cnt;
+				char media[32], portstr[32];
+
+				++media_cnt;
+				if (media_cnt > 1) {
+					puts("Media line ignored");
+					break;
+				}
+
+				cnt = sscanf(line+2, "%s %s RTP/", media, portstr);
+				if (cnt != 2) {
+					PJ_LOG(1,(THIS_FILE, "Error parsing media line"));
+					goto on_error;
+				}
+
+				comp0_port = atoi(portstr);
+
+			}
+			break;
+		case 'c':
+			{
+				int cnt;
+				char c[32], net[32], ip[80];
+
+				cnt = sscanf(line+2, "%s %s %s", c, net, ip);
+				if (cnt != 3) {
+					PJ_LOG(1,(THIS_FILE, "Error parsing connection line"));
+					goto on_error;
+				}
+
+				strcpy(comp0_addr, ip);
+			}
+			break;
+		case 'a':
+			{
+				char *attr = strtok(line+2, ": \t\r\n");
+				if (strcmp(attr, "ice-ufrag")==0) {
+					strcpy(g_ice.rem.ufrag, attr+strlen(attr)+1);
+				} else if (strcmp(attr, "ice-pwd")==0) {
+					strcpy(g_ice.rem.pwd, attr+strlen(attr)+1);
+				} else if (strcmp(attr, "rtcp")==0) {
+					char *val = attr+strlen(attr)+1;
+					int af, cnt;
+					int port;
+					char net[32], ip[64];
+					pj_str_t tmp_addr;
+					pj_status_t status;
+
+					cnt = sscanf(val, "%d IN %s %s", &port, net, ip);
+					if (cnt != 3) {
+						PJ_LOG(1,(THIS_FILE, "Error parsing rtcp attribute"));
+						goto on_error;
+					}
+
+					if (strchr(ip, ':'))
+						af = pj_AF_INET6();
+					else
+						af = pj_AF_INET();
+
+					pj_sockaddr_init(af, &g_ice.rem.def_addr[1], NULL, 0);
+					tmp_addr = pj_str(ip);
+					status = pj_sockaddr_set_str_addr(af, &g_ice.rem.def_addr[1],
+							&tmp_addr);
+					if (status != PJ_SUCCESS) {
+						PJ_LOG(1,(THIS_FILE, "Invalid IP address"));
+						goto on_error;
+					}
+					pj_sockaddr_set_port(&g_ice.rem.def_addr[1], (pj_uint16_t)port);
+
+				} else if (strcmp(attr, "candidate")==0) {
+					char *sdpcand = attr+strlen(attr)+1;
+					int af, cnt;
+					char foundation[32], transport[12], ipaddr[80], type[32];
+					pj_str_t tmpaddr;
+					int comp_id, prio, port;
+					pj_ice_sess_cand *cand;
+					pj_status_t status;
+
+					cnt = sscanf(sdpcand, "%s %d %s %d %s %d typ %s",
+								 foundation,
+								 &comp_id,
+								 transport,
+								 &prio,
+								 ipaddr,
+								 &port,
+								 type);
+					if (cnt != 7) {
+						PJ_LOG(1, (THIS_FILE, "error: Invalid ICE candidate line"));
+						goto on_error;
+					}
+
+					cand = &g_ice.rem.cand[g_ice.rem.cand_cnt];
+					pj_bzero(cand, sizeof(*cand));
+
+					if (strcmp(type, "host")==0)
+						cand->type = PJ_ICE_CAND_TYPE_HOST;
+					else if (strcmp(type, "srflx")==0)
+						cand->type = PJ_ICE_CAND_TYPE_SRFLX;
+					else if (strcmp(type, "relay")==0)
+						cand->type = PJ_ICE_CAND_TYPE_RELAYED;
+					else {
+						PJ_LOG(1, (THIS_FILE, "Error: invalid candidate type '%s'",
+								   type));
+						goto on_error;
+					}
+
+					cand->comp_id = (pj_uint8_t)comp_id;
+					pj_strdup2(g_ice.pool, &cand->foundation, foundation);
+					cand->prio = prio;
+
+					if (strchr(ipaddr, ':'))
+						af = pj_AF_INET6();
+					else
+						af = pj_AF_INET();
+
+					tmpaddr = pj_str(ipaddr);
+					pj_sockaddr_init(af, &cand->addr, NULL, 0);
+					status = pj_sockaddr_set_str_addr(af, &cand->addr, &tmpaddr);
+					if (status != PJ_SUCCESS) {
+						PJ_LOG(1,(THIS_FILE, "Error: invalid IP address '%s'",
+								  ipaddr));
+						goto on_error;
+					}
+
+					pj_sockaddr_set_port(&cand->addr, (pj_uint16_t)port);
+
+					++g_ice.rem.cand_cnt;
+
+					if (cand->comp_id > g_ice.rem.comp_cnt)
+						g_ice.rem.comp_cnt = cand->comp_id;
+				}
+			}
+			break;
+		}
+	}
+
+	if (g_ice.rem.cand_cnt==0 ||
+		g_ice.rem.ufrag[0]==0 ||
+		g_ice.rem.pwd[0]==0 ||
+		g_ice.rem.comp_cnt == 0)
+	{
+		PJ_LOG(1, (THIS_FILE, "Error: not enough info"));
+		goto on_error;
+	}
+
+	if (comp0_port==0 || comp0_addr[0]=='\0') {
+		PJ_LOG(1, (THIS_FILE, "Error: default address for component 0 not found"));
+		goto on_error;
+	} else {
+		int af;
+		pj_str_t tmp_addr;
+		pj_status_t status;
+
+		if (strchr(comp0_addr, ':'))
+			af = pj_AF_INET6();
+		else
+			af = pj_AF_INET();
+
+		pj_sockaddr_init(af, &g_ice.rem.def_addr[0], NULL, 0);
+		tmp_addr = pj_str(comp0_addr);
+		status = pj_sockaddr_set_str_addr(af, &g_ice.rem.def_addr[0],
+				&tmp_addr);
+		if (status != PJ_SUCCESS) {
+			PJ_LOG(1,(THIS_FILE, "Invalid IP address in c= line"));
+			goto on_error;
+		}
+		pj_sockaddr_set_port(&g_ice.rem.def_addr[0], (pj_uint16_t)comp0_port);
+	}
+
+//	PJ_LOG(3, ("icedemo.c", "Done, %d remote candidate(s) added", g_ice.rem.cand_cnt));
+
+	printf(THIS_FILE, "Done, %d remote candidate(s) added", g_ice.rem.cand_cnt);
+
+	return;
+
+on_error:
+	reset_rem_info();
+}
+
 /*
  * Input and parse SDP from the remote (containing remote's ICE information)
  * and save it to global variables.
@@ -1261,7 +1506,9 @@ void do_traversal_request(char* data)
 	char hole_info[1024] = {0};
 	memcpy(hole_info, data + offset, len);
 
-	g_ice.offer_nego = PJ_TRUE;
+	icedemo_input_remote2(hole_info, len);
+
+	g_ice.offer_can_nego = PJ_TRUE;
 }
 
 void do_traversal_response(char* data)
@@ -1299,7 +1546,9 @@ void do_traversal_response(char* data)
 	char hole_info[1024] = {0};
 	memcpy(hole_info, data + offset, len);
 
-	g_ice.answer_nego = PJ_TRUE;
+	icedemo_input_remote2(hole_info, len);
+
+	g_ice.answer_can_nego = PJ_TRUE;
 }
 
 void* do_handle_recv_signal_info(void *data)
@@ -1462,7 +1711,7 @@ static void offer_traversal()
 {
 	while (!g_ice.quit)
 	{
-		if (g_ice.offer_nego)
+		if (g_ice.offer_can_nego)
 		{
 			icedemo_start_nego();
 			break;
@@ -1516,7 +1765,7 @@ static void answer_traversal()
 
 	while (!g_ice.quit)
 	{
-		if (g_ice.answer_nego)
+		if (g_ice.answer_can_nego)
 		{
 			icedemo_start_nego();
 			break;
@@ -1541,8 +1790,9 @@ static void icedemo_auto(void)
 	g_ice.quit = PJ_FALSE;
 	g_ice.init_success = PJ_FALSE;
 	g_ice.session_ready = PJ_FALSE;
-	g_ice.offer_nego = PJ_FALSE;
-	g_ice.answer_nego = PJ_FALSE;
+	g_ice.offer_can_nego = PJ_FALSE;
+	g_ice.answer_can_nego = PJ_FALSE;
+	g_ice.nego_success = PJ_FALSE;
 	g_ice.addr_signal = NULL;
 	g_ice.addr_signal = (addrinfo_t*)malloc(sizeof(addrinfo_t));
 	bzero(g_ice.addr_signal, sizeof(addrinfo_t));
@@ -1592,6 +1842,38 @@ static void icedemo_auto(void)
 			}
 			usleep(1000);
 		}
+	}
+
+	cnt = 0;
+	while (++cnt < 15 * 1000 && !g_ice.quit)
+	{
+		if (g_ice.nego_success)
+		{
+			break;
+		}
+		usleep(1000);
+	}
+
+	if (!g_ice.nego_success)
+	{
+		goto end;
+	}
+
+	//p2p success. can send data to peer now.
+	char* data_offer = "++++++++++++++++++++offer-data+++++++++++++++++\0";
+	char* data_answer = "-------------------answer-data----------------\0";
+	while (!g_ice.quit)
+	{
+		if (0 == g_ice.opt.role)
+		{
+			icedemo_send_data(1, data_offer);
+		}
+		else
+		{
+			icedemo_send_data(1, data_answer);
+		}
+
+		sleep(3);
 	}
 
 	while (!g_ice.quit)

@@ -1655,8 +1655,6 @@ void* thread_transmit_signal(void *data)
 		pthread_create(&t, NULL, do_handle_recv_signal_info, (void*)msg2);
 	}
 
-//	pthread_join(t_heart, NULL);
-
 	return NULL;
 }
 
@@ -1810,6 +1808,7 @@ static void icedemo_auto(void)
 
 	if (!g_ice.nego_success)
 	{
+		printf("can not nego.\n");
 		goto end;
 	}
 
@@ -1836,7 +1835,6 @@ static void icedemo_auto(void)
 	}
 
 end:
-//	pthread_join(t_signal_transmit, NULL);
 	g_ice.quit = PJ_TRUE;
 	free_ice_additional();
 	icedemo_stop_session();

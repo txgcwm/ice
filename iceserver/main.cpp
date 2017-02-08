@@ -165,6 +165,8 @@ void do_traversal_request(const std::vector<attr_type_value_t> &content, singal_
 {
 	assert(si != NULL);
 
+	printf("recv traversal request, client addr=%s, port=%d\n", inet_ntoa(si->cli.cliaddr.sin_addr), si->cli.cliaddr.sin_port);
+
 	std::string guid_answer;
 	std::string guid_offer;
 
@@ -285,6 +287,8 @@ void do_traversal_request(const std::vector<attr_type_value_t> &content, singal_
 void do_registe(const std::vector<attr_type_value_t> &content, singal_info_t* si)
 {
 	assert(si != NULL);
+
+	printf("recv registe info, client addr=%s, port=%d\n", inet_ntoa(si->cli.cliaddr.sin_addr), si->cli.cliaddr.sin_port);
 
 	std::string guid;
 	hole_info_t *hole = new hole_info_t;
@@ -436,6 +440,8 @@ void* thread_singal_transmit(void*)
 		{
 			err("recv from error, errno=%d", errno);
 		}
+
+		printf("recv from client, len=%d\n", recv_len);
 
 		singal_info->recv_origin_msg.assign(msg, recv_len);
 		singal_info->cli.sockfd = sockfd;

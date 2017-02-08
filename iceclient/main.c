@@ -273,6 +273,8 @@ static void cb_on_ice_complete(pj_ice_strans *ice_st,
 				   pj_ice_strans_op op,
 				   pj_status_t status)
 {
+	printf("ice addr=%x, global ice addr=%x.\n", ice_st, g_ice.icest);
+
 	const char *opname =
 	(op==PJ_ICE_STRANS_OP_INIT? "initialization" :
 		(op==PJ_ICE_STRANS_OP_NEGOTIATION ? "negotiation" : "unknown_op"));
@@ -1826,7 +1828,7 @@ static void icedemo_auto(void)
 			icedemo_send_data(1, data_answer);
 		}
 
-		sleep(3);
+		sleep(10);
 	}
 
 	while (!g_ice.quit)

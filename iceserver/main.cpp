@@ -54,7 +54,7 @@ typedef struct client_addr_s
 	client_addr_s()
 	{
 		memset(&cliaddr, 0, sizeof(cliaddr));
-		len = sizeof(socklen_t);
+		len = sizeof(struct sockaddr_in);
 		sockfd = 0;
 	}
 }client_addr_t;
@@ -440,8 +440,6 @@ void* thread_singal_transmit(void*)
 		{
 			err("recv from error, errno=%d", errno);
 		}
-
-		printf("recv from client, len=%d\n", recv_len);
 
 		singal_info->recv_origin_msg.assign(msg, recv_len);
 		singal_info->cli.sockfd = sockfd;

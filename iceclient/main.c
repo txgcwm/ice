@@ -97,6 +97,10 @@ static struct app_t
 	int signal_port;
 	pj_str_t signal_addr;
 	addrinfo_t *addr_signal;
+	char registe_info_buffer[2048];
+	int len_registe_info_buffer;
+	char local_info_buffer[1024];
+	int len_local_info;
 } g_ice;
 
 /* Utility to display error messages */
@@ -1406,52 +1410,14 @@ static void icedemo_print_menu(void)
 	puts("+----------------------------------------------------------------------+");
 }
 
-void make_heart_info(char* send_buffer, int buff_max, int *offset)
-{
-	int msg_type = MSG_TYPE_HEART;
-	msg_type = htonl(msg_type);
-	memcpy(send_buffer + *offset, &msg_type, sizeof(msg_type));
-	*offset += sizeof(msg_type);
-	assert(*offset < buff_max);
-	int len = 0;
-	len = htonl(len);
-	memcpy(send_buffer + *offset, &len, sizeof(len));
-	int attr_type;
-	if (0 == g_ice.opt.role)
-	{
-		attr_type = TYPE_ATTR_GUID_OFFER;
-	}
-	else
-	{
-		attr_type = TYPE_ATTR_GUID_ANSWER;
-	}
-	attr_type = htonl(attr_type);
-	memcpy(send_buffer + *offset, &attr_type, sizeof(attr_type));
-	*offset += sizeof(attr_type);
-	assert(*offset < buff_max);
-	len = g_ice.opt.guid_offer.slen;
-	len = htonl(len);
-	memcpy(send_buffer + *offset, &len, sizeof(len));
-	*offset += sizeof(len);
-	assert(*offset < buff_max);
-	memcpy(send_buffer + *offset, g_ice.opt.guid_offer.ptr, g_ice.opt.guid_offer.slen);
-	*offset += g_ice.opt.guid_offer.slen;
-	assert(*offset < buff_max);
-}
-
 void* thread_signal_heart(void *data)
 {
 	assert(data != NULL);
 	addrinfo_t *addr = (addrinfo_t*)data;
 
-	char send_buffer[64] = {0};
-	int offset = 0;
-
-	make_heart_info(send_buffer, 64, &offset);
-
 	while (!g_ice.quit)
 	{
-		int ret = sendto(addr->sockfd, send_buffer, offset, 0, (struct sockaddr *)&addr->addr, sizeof(addr->addr));
+		int ret = sendto(addr->sockfd, g_ice.registe_info_buffer, g_ice.len_registe_info_buffer, 0, (struct sockaddr *)&addr->addr, sizeof(addr->addr));
 		if (ret < 0)
 		{
 			PJ_LOG(1, (THIS_FILE, "thread_signal_heart:sendto err=%d", errno));
@@ -1474,12 +1440,6 @@ void do_register_response(char* data)
 
 	char value[64] = {0};
 	memcpy(value, data + offset, len);
-}
-
-void do_heart(char* data)
-{
-	assert(data != NULL);
-
 }
 
 void do_traversal_request(char* data)
@@ -1568,9 +1528,6 @@ void* do_handle_recv_signal_info(void *data)
 	case MSG_TYPE_REGISTER_RESPONSE:
 		do_register_response(msg + offset);
 		break;
-	case MSG_TYPE_HEART:
-		do_heart(msg + offset);
-		break;
 	case MSG_TYPE_TRAVERSAL_REQUEST: //answer-->turn-->offer
 		do_traversal_request(msg + offset);
 		break;
@@ -1590,15 +1547,16 @@ void* do_handle_recv_signal_info(void *data)
 
 //msg type(4B) attr(4B) attr_len(4B) attr_content attr(4B) attr_len(4B) attr_content ...
 
-void make_register_info(char* send_buffer, int buff_max, char* local_info_buffer, int len_local_info, int *offset)
+void make_register_info()
 {
-	*offset = 0;
+	g_ice.len_registe_info_buffer = 0;
+	int buff_max = 2048;
 
 	int msg_type = MSG_TYPE_REGISTER;
 	msg_type = htonl(msg_type);
-	memcpy(send_buffer + *offset, &msg_type, sizeof(msg_type));
-	*offset += sizeof(msg_type);
-	assert(*offset < buff_max);
+	memcpy(g_ice.registe_info_buffer + g_ice.len_registe_info_buffer, &msg_type, sizeof(msg_type));
+	g_ice.len_registe_info_buffer += sizeof(msg_type);
+	assert(g_ice.len_registe_info_buffer < buff_max);
 	int type_len = 0;
 
 	int attr;
@@ -1606,59 +1564,54 @@ void make_register_info(char* send_buffer, int buff_max, char* local_info_buffer
 	{
 		attr = TYPE_ATTR_GUID_OFFER;
 		attr = htonl(attr);
-		memcpy(send_buffer + *offset, &attr, sizeof(attr));
-		*offset += sizeof(attr);
-		assert(*offset < buff_max);
+		memcpy(g_ice.registe_info_buffer + g_ice.len_registe_info_buffer, &attr, sizeof(attr));
+		g_ice.len_registe_info_buffer += sizeof(attr);
+		assert(g_ice.len_registe_info_buffer < buff_max);
 		type_len = htonl(g_ice.opt.guid_offer.slen);
-		memcpy(send_buffer + *offset, &type_len, sizeof(type_len));
-		*offset += sizeof(type_len);
-		assert(*offset < buff_max);
-		memcpy(send_buffer + *offset, g_ice.opt.guid_offer.ptr, g_ice.opt.guid_offer.slen);
-		*offset += g_ice.opt.guid_offer.slen;
-		assert(*offset < buff_max);
+		memcpy(g_ice.registe_info_buffer + g_ice.len_registe_info_buffer, &type_len, sizeof(type_len));
+		g_ice.len_registe_info_buffer += sizeof(type_len);
+		assert(g_ice.len_registe_info_buffer < buff_max);
+		memcpy(g_ice.registe_info_buffer + g_ice.len_registe_info_buffer, g_ice.opt.guid_offer.ptr, g_ice.opt.guid_offer.slen);
+		g_ice.len_registe_info_buffer += g_ice.opt.guid_offer.slen;
+		assert(g_ice.len_registe_info_buffer < buff_max);
 	}
 	else
 	{
 		attr = TYPE_ATTR_GUID_ANSWER;
 		attr = htonl(attr);
-		memcpy(send_buffer + *offset, &attr, sizeof(attr));
-		*offset += sizeof(attr);
-		assert(*offset < buff_max);
+		memcpy(g_ice.registe_info_buffer + g_ice.len_registe_info_buffer, &attr, sizeof(attr));
+		g_ice.len_registe_info_buffer += sizeof(attr);
+		assert(g_ice.len_registe_info_buffer< buff_max);
 		type_len = htonl(g_ice.opt.guid_answer.slen);
-		memcpy(send_buffer + *offset, &type_len, sizeof(type_len));
-		*offset += sizeof(type_len);
-		assert(*offset < buff_max);
-		memcpy(send_buffer + *offset, g_ice.opt.guid_answer.ptr, g_ice.opt.guid_answer.slen);
-		*offset += g_ice.opt.guid_answer.slen;
-		assert(*offset < buff_max);
+		memcpy(g_ice.registe_info_buffer + g_ice.len_registe_info_buffer, &type_len, sizeof(type_len));
+		g_ice.len_registe_info_buffer += sizeof(type_len);
+		assert(g_ice.len_registe_info_buffer < buff_max);
+		memcpy(g_ice.registe_info_buffer + g_ice.len_registe_info_buffer, g_ice.opt.guid_answer.ptr, g_ice.opt.guid_answer.slen);
+		g_ice.len_registe_info_buffer += g_ice.opt.guid_answer.slen;
+		assert(g_ice.len_registe_info_buffer < buff_max);
 	}
 
 	attr = TYPE_ATTR_HOLE_INFO;
 	attr = htonl(attr);
-	memcpy(send_buffer + *offset, &attr, sizeof(attr));
-	*offset += sizeof(attr);
-	assert(*offset < buff_max);
-	type_len = htonl(len_local_info);
-	memcpy(send_buffer + *offset, &type_len, sizeof(type_len));
-	*offset += sizeof(type_len);
-	assert(*offset < buff_max);
-	memcpy(send_buffer + *offset, local_info_buffer, len_local_info);
-	*offset += len_local_info;
-	assert(*offset < buff_max);
+	memcpy(g_ice.registe_info_buffer + g_ice.len_registe_info_buffer, &attr, sizeof(attr));
+	g_ice.len_registe_info_buffer += sizeof(attr);
+	assert(g_ice.len_registe_info_buffer < buff_max);
+	type_len = htonl(g_ice.len_local_info);
+	memcpy(g_ice.registe_info_buffer + g_ice.len_registe_info_buffer, &type_len, sizeof(type_len));
+	g_ice.len_registe_info_buffer += sizeof(type_len);
+	assert(g_ice.len_registe_info_buffer < buff_max);
+	memcpy(g_ice.registe_info_buffer + g_ice.len_registe_info_buffer, g_ice.local_info_buffer, g_ice.len_local_info);
+	g_ice.len_registe_info_buffer += g_ice.len_local_info;
+	assert(g_ice.len_registe_info_buffer < buff_max);
 }
 
 void* thread_transmit_signal(void *data)
 {
 	(void)data;
 
-	char local_info_buffer[1024] = {0};
-	int len_local_info = 0;
-	icedemo_show_ice_auto(local_info_buffer, &len_local_info);
+	icedemo_show_ice_auto(g_ice.local_info_buffer, &g_ice.len_local_info);
 
-	int offset = 0;
-	char send_buffer[2048] = {0};
-
-	make_register_info(send_buffer, 2048, local_info_buffer, len_local_info, &offset);
+	make_register_info();
 
 	//send local info to server.
 	bzero(&g_ice.addr_signal->addr, sizeof(g_ice.addr_signal->addr));
@@ -1673,7 +1626,7 @@ void* thread_transmit_signal(void *data)
 		return NULL;
 	}
 
-	int ret = sendto(g_ice.addr_signal->sockfd, send_buffer, offset, 0, (struct sockaddr *)&g_ice.addr_signal->addr, sizeof(g_ice.addr_signal->addr));
+	int ret = sendto(g_ice.addr_signal->sockfd, g_ice.registe_info_buffer, g_ice.len_registe_info_buffer, 0, (struct sockaddr *)&g_ice.addr_signal->addr, sizeof(g_ice.addr_signal->addr));
 	if (ret < 0)
 	{
 		PJ_LOG(1, (THIS_FILE, "thread_transmit_signal:sendto error, err=%d", errno));
@@ -1702,7 +1655,7 @@ void* thread_transmit_signal(void *data)
 		pthread_create(&t, NULL, do_handle_recv_signal_info, (void*)msg2);
 	}
 
-	pthread_join(t_heart, NULL);
+//	pthread_join(t_heart, NULL);
 
 	return NULL;
 }
@@ -1770,6 +1723,7 @@ static void answer_traversal()
 			icedemo_start_nego();
 			break;
 		}
+
 		usleep(1000);
 	}
 }
@@ -1882,7 +1836,8 @@ static void icedemo_auto(void)
 	}
 
 end:
-	pthread_join(t_signal_transmit, NULL);
+//	pthread_join(t_signal_transmit, NULL);
+	g_ice.quit = PJ_TRUE;
 	free_ice_additional();
 	icedemo_stop_session();
 	icedemo_destroy_instance();

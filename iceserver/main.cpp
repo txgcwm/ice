@@ -282,53 +282,6 @@ void do_traversal_request(const std::vector<attr_type_value_t> &content, singal_
 	}
 }
 
-void do_heart(const std::vector<attr_type_value_t> &content, singal_info_t* si)
-{
-	assert(si != NULL);
-
-	std::string guid;
-
-	for (std::vector<attr_type_value_t>::const_iterator iter = content.begin();
-		 iter != content.end();
-		 ++iter)
-	{
-		const attr_type_value_t& item(*iter);
-		switch (item.type)
-		{
-		case TYPE_ATTR_GUID_OFFER: //yes, that it is.
-		case TYPE_ATTR_GUID_ANSWER:
-			guid = item.value;
-			break;
-		default:
-			break;
-		}
-	}
-
-	//update the timestamp in global map
-	pthread_mutex_lock(g_mu_hole);
-	{
-		std::map<std::string, hole_info_t*>::iterator iter = g_info_hole->find(guid);
-		if (iter != g_info_hole->end())
-		{
-			iter->second->tm = time(NULL);
-		}
-	}
-	pthread_mutex_unlock(g_mu_hole);
-
-	char buff[64] = {0};
-	int offset = 0;
-	int msg_type = MSG_TYPE_HEART;
-	msg_type = htonl(msg_type);
-	memcpy(buff + offset, &msg_type, sizeof(msg_type));
-	offset += sizeof(msg_type);
-
-	int ret = sendto(si->cli.sockfd, buff, offset, 0, (struct sockaddr *)&si->cli.cliaddr, si->cli.len);
-	if (ret < 0)
-	{
-		err("sendto error, err=%d\n", errno);
-	}
-}
-
 void do_registe(const std::vector<attr_type_value_t> &content, singal_info_t* si)
 {
 	assert(si != NULL);
@@ -408,9 +361,6 @@ void do_handle_singal_info(int msg_type, const std::vector<attr_type_value_t> &c
 	{
 	case MSG_TYPE_REGISTER:
 		do_registe(content, si);
-		break;
-	case MSG_TYPE_HEART:
-		do_heart(content, si);
 		break;
 	case MSG_TYPE_TRAVERSAL_REQUEST:
 		do_traversal_request(content, si);

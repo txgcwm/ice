@@ -8,9 +8,7 @@ include_directories(${PJNATH_SRC_ROOT}/pjlib-util/include)
 include_directories(${PJNATH_SRC_ROOT}/pjlib/include)
 include_directories(${PJNATH_SRC_ROOT}/pjnath/include)
 
-link_directories(${PJNATH_SRC_ROOT}/pjlib-util/lib)
-link_directories(${PJNATH_SRC_ROOT}/pjlib/lib)
-link_directories(${PJNATH_SRC_ROOT}/pjnath/lib)
+link_directories(${CMAKE_SOURCE_DIR}/pjsiplib)
 
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR}/lib)

@@ -1810,7 +1810,7 @@ static void icedemo_auto(void)
 
 	if (!g_ice.nego_success)
 	{
-		printf("can not nego.\n");
+		printf("EEEEEEEEEEEEEEEEEEEE-can not nego.role=%d\n, guid=%s", g_ice.opt.role, g_ice.opt.role == 0 ? g_ice.opt.guid_offer.ptr : g_ice.opt.guid_answer.ptr);
 		goto end;
 	}
 

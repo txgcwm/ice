@@ -10,9 +10,9 @@ cp ./pjproject-2.5.5/pjlib/lib/* ./pjsiplib/libpj.a
 cp ./pjproject-2.5.5/pjlib-util/lib/* ./pjsiplib/libpjlib-util.a
 cp ./pjproject-2.5.5/pjnath/lib/* ./pjsiplib/libpjnath.a
 
-rm -rf build_tmp
-mkdir build_tmp
-cd build_tmp
+rm -rf obj
+mkdir obj
+cd obj
 cmake .. -DCMAKE_BUILD_TYPE=Debug
 make
 

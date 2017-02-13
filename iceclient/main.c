@@ -1,21 +1,4 @@
-/* $Id: icedemo.c 4624 2013-10-21 06:37:30Z ming $ */
-/*
- * Copyright (C) 2008-2011 Teluu Inc. (http://www.teluu.com)
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <pjlib.h>
@@ -32,9 +15,6 @@
 
 #define THIS_FILE   "icedemo.c"
 
-/* For this demo app, configure longer STUN keep-alive time
- * so that it does't clutter the screen output.
- */
 #define KA_INTERVAL 300
 
 typedef struct addrinfo_s
@@ -683,66 +663,63 @@ static void icedemo_show_ice_auto(char *buffer2, int *len_buff)
 	static char buffer[1000];
 	int len;
 
-	if (g_ice.icest == NULL) {
-	PJ_LOG(1,(THIS_FILE, "Error: No ICE instance, create it first"));
-	return;
+	if (g_ice.icest == NULL)
+	{
+		PJ_LOG(1,(THIS_FILE, "Error: No ICE instance, create it first"));
+		return;
 	}
 
-	puts("General info");
-	puts("---------------");
-	printf("Component count    : %d\n", g_ice.opt.comp_cnt);
-	printf("Status             : ");
 	if (pj_ice_strans_sess_is_complete(g_ice.icest))
-	puts("negotiation complete");
+	{
+		puts("negotiation complete");
+	}
 	else if (pj_ice_strans_sess_is_running(g_ice.icest))
-	puts("negotiation is in progress");
+	{
+		puts("negotiation is in progress");
+	}
 	else if (pj_ice_strans_has_sess(g_ice.icest))
-	puts("session ready");
+	{
+		puts("session ready");
+	}
 	else
-	puts("session not created");
-
-	if (!pj_ice_strans_has_sess(g_ice.icest)) {
-	puts("Create the session first to see more info");
-	return;
+	{
+		puts("session not created");
 	}
 
-	printf("Negotiated comp_cnt: %d\n",
-	   pj_ice_strans_get_running_comp_cnt(g_ice.icest));
-	printf("Role               : %s\n",
-	   pj_ice_strans_get_role(g_ice.icest)==PJ_ICE_SESS_ROLE_CONTROLLED ?
-	   "controlled" : "controlling");
+	if (!pj_ice_strans_has_sess(g_ice.icest))
+	{
+		puts("Create the session first to see more info");
+		return;
+	}
 
 	len = encode_session(buffer, sizeof(buffer));
 	if (len < 0)
-	err_exit("not enough buffer to show ICE status", -len);
+	{
+		err_exit("not enough buffer to show ICE status", -len);
+	}
 
-	puts("");
 	printf("Local SDP (paste this to remote host):\n"
-	   "--------------------------------------\n"
-	   "%s\n", buffer);
+		   "--------------------------------------\n"
+		   "%s\n", buffer);
 
 	strncpy(buffer2, buffer, len);
 	*len_buff = len;
 
 	puts("");
 	puts("Remote info:\n"
-	 "----------------------");
+		 "----------------------");
 	if (g_ice.rem.cand_cnt==0) {
-	puts("No remote info yet");
+		puts("No remote info yet");
 	} else {
-	unsigned i;
+		unsigned i;
 
-	printf("Remote ufrag       : %s\n", g_ice.rem.ufrag);
-	printf("Remote password    : %s\n", g_ice.rem.pwd);
-	printf("Remote cand. cnt.  : %d\n", g_ice.rem.cand_cnt);
+		for (i=0; i<g_ice.rem.cand_cnt; ++i) {
+			len = print_cand(buffer, sizeof(buffer), &g_ice.rem.cand[i]);
+			if (len < 0)
+				err_exit("not enough buffer to show ICE status", -len);
 
-	for (i=0; i<g_ice.rem.cand_cnt; ++i) {
-		len = print_cand(buffer, sizeof(buffer), &g_ice.rem.cand[i]);
-		if (len < 0)
-		err_exit("not enough buffer to show ICE status", -len);
-
-		printf("  %s", buffer);
-	}
+			printf("  %s", buffer);
+		}
 	}
 }
 

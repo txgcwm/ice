@@ -27,6 +27,7 @@
 #include<arpa/inet.h>
 #include <errno.h>
 #include <pthread.h>
+#include <sys/time.h>
 
 #include "pub.h"
 
@@ -679,7 +680,7 @@ static int encode_session(char buffer[], unsigned maxlen)
 }
 
 static void icedemo_show_ice_auto(char *buffer2, int *len_buff)
-{
+{	
 	static char buffer[1000];
 	int len;
 
@@ -1741,6 +1742,12 @@ static void icedemo_auto(void)
 {
 	PJ_LOG(1,(THIS_FILE, "ice demo auto mode..."));
 
+	struct timeval tvafter;
+	struct timeval tvpre;
+	struct timezone tz;
+
+	gettimeofday (&tvpre , &tz);
+
 	g_ice.quit = PJ_FALSE;
 	g_ice.init_success = PJ_FALSE;
 	g_ice.session_ready = PJ_FALSE;
@@ -1813,6 +1820,10 @@ static void icedemo_auto(void)
 		printf("EEEEEEEEEEEEEEEEEEEE-can not nego.role=%d\n, guid=%s", g_ice.opt.role, g_ice.opt.role == 0 ? g_ice.opt.guid_offer.ptr : g_ice.opt.guid_answer.ptr);
 		goto end;
 	}
+
+	gettimeofday (&tvafter , &tz);
+	int cost_time = (tvafter.tv_sec-tvpre.tv_sec)*1000+(tvafter.tv_usec-tvpre.tv_usec)/1000;
+	printf("#################################p2p-success, cost-time=%d\n", cost_time);
 
 	//p2p success. can send data to peer now.
 	char* data_offer = "++++++++++++++++++++offer-data+++++++++++++++++\0";

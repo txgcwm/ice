@@ -21,6 +21,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <errno.h>
+
 #include "turn.h"
 #include "auth.h"
 
@@ -107,19 +108,17 @@ static void dump_status(pj_turn_srv *srv)
 int main(int argc, char* argv[])
 {
 	pj_bool_t DAEMON_MODE = PJ_FALSE;
-	if (2 == argc && 0 == strcmp(argv[1], "-d"))
-	{
+
+	if (2 == argc && 0 == strcmp(argv[1], "-d")) {
 		DAEMON_MODE = PJ_TRUE;
 	}
 
-	if (DAEMON_MODE && signal(SIGUSR1, SigUsr) == SIG_ERR )
-	{
-		return err("signal User faile.", errno);
+	if (DAEMON_MODE && signal(SIGUSR1, SigUsr) == SIG_ERR ) {
+		// return err("signal User faile.", errno);
 	}
 
-	if (DAEMON_MODE && -1 == daemon(1, 0))
-	{
-		return err("daemon failed.", errno);
+	if (DAEMON_MODE && -1 == daemon(1, 0)) {
+		// return err("daemon failed.", errno);
 	}
 
 	pj_turn_srv *srv = NULL;
@@ -127,20 +126,17 @@ int main(int argc, char* argv[])
 	pj_status_t status;
 
 	status = pj_init();
-	if (status != PJ_SUCCESS)
-	{
+	if (status != PJ_SUCCESS) {
 		return err("pj_init() error", status);
 	}
 
 	status = pjlib_util_init();
-	if (status != PJ_SUCCESS)
-	{
+	if (status != PJ_SUCCESS) {
 		return err("pjlib_util_init error", status);
 	}
 
 	status = pjnath_init();
-	if (status != PJ_SUCCESS)
-	{
+	if (status != PJ_SUCCESS) {
 		return err("pjnath_init error", status);
 	}
 
@@ -150,23 +146,23 @@ int main(int argc, char* argv[])
 
 	status = pj_turn_srv_create(&g_cp.factory, &srv);
 	if (status != PJ_SUCCESS)
-	return err("Error creating server", status);
+		return err("Error creating server", status);
 
 	status = pj_turn_listener_create_udp(srv, pj_AF_INET(), NULL,
 					 TURN_PORT_UDP, 1, 0, &listener);
 	if (status != PJ_SUCCESS)
-	return err("Error creating UDP listener", status);
+		return err("Error creating UDP listener", status);
 
 #if PJ_HAS_TCP
 	status = pj_turn_listener_create_tcp(srv, pj_AF_INET(), NULL,
 					 TURN_PORT_TCP, 1, 0, &listener);
 	if (status != PJ_SUCCESS)
-	return err("Error creating listener", status);
+		return err("Error creating listener", status);
 #endif
 
 	status = pj_turn_srv_add_listener(srv, listener);
 	if (status != PJ_SUCCESS)
-	return err("Error adding listener", status);
+		return err("Error adding listener", status);
 
 	puts("Server is running");
 
@@ -174,8 +170,7 @@ int main(int argc, char* argv[])
 
 	dump_status(srv);
 
-	while (!g_quit)
-	{
+	while (!g_quit) {
 		pj_thread_sleep(100);
 	}
 

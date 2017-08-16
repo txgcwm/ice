@@ -1319,8 +1319,8 @@ static pj_status_t stun_on_rx_indication(pj_stun_session *sess,
 
     /* Only expect Send Indication */
     if (msg->hdr.type != PJ_STUN_SEND_INDICATION) {
-	/* Ignore */
-	return PJ_SUCCESS;
+		/* Ignore */
+		return PJ_SUCCESS;
     }
 
     /* Get XOR-PEER-ADDRESS attribute */
@@ -1328,8 +1328,9 @@ static pj_status_t stun_on_rx_indication(pj_stun_session *sess,
 		pj_stun_msg_find_attr(msg, PJ_STUN_ATTR_XOR_PEER_ADDR, 0);
 
     /* MUST have XOR-PEER-ADDRESS attribute */
-    if (!peer_attr)
-	return PJ_SUCCESS;
+    if (!peer_attr) {
+		return PJ_SUCCESS;	
+	}
 
     /* Get DATA attribute */
     data_attr = (pj_stun_data_attr*)
@@ -1339,14 +1340,15 @@ static pj_status_t stun_on_rx_indication(pj_stun_session *sess,
     perm = lookup_permission_by_addr(alloc, &peer_attr->sockaddr,
 				     pj_sockaddr_get_len(&peer_attr->sockaddr));
     if (perm == NULL) {
-	perm = create_permission(alloc, &peer_attr->sockaddr,
-				 pj_sockaddr_get_len(&peer_attr->sockaddr));
+		perm = create_permission(alloc, &peer_attr->sockaddr,
+				 				pj_sockaddr_get_len(&peer_attr->sockaddr));
     }
     refresh_permission(perm);
 
     /* Return if we don't have data */
-    if (data_attr == NULL)
-	return PJ_SUCCESS;
+    if (data_attr == NULL) {
+		return PJ_SUCCESS;
+	}
 
     /* Relay the data to peer */
     len = data_attr->length;

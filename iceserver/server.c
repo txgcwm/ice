@@ -666,14 +666,16 @@ PJ_DEF(void) pj_turn_srv_on_rx_pkt(pj_turn_srv *srv,
 	    pkt->len = 0;
 	} else if (parsed_len > 0) {
 	    if (parsed_len == pkt->len) {
-		pkt->len = 0;
-	    } else {
-		pj_memmove(pkt->pkt, pkt->pkt+parsed_len,
-			   pkt->len - parsed_len);
-		pkt->len -= parsed_len;
-	    }
-	}
+            pkt->len = 0;
+        } else {
+            pj_memmove(pkt->pkt, pkt->pkt+parsed_len,
+                pkt->len - parsed_len);
+            pkt->len -= parsed_len;
+            }
+        }
     }
+
+    return;
 }
 
 

@@ -1,5 +1,6 @@
-#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
 #include <pjlib.h>
 #include <pjlib-util.h>
 #include <pjnath.h>
@@ -48,7 +49,6 @@ static struct app_t {
 		unsigned	 cand_cnt;
 		pj_ice_sess_cand cand[PJ_ICE_ST_MAX_CAND];
 	} rem;
-
 } icedemo;
 
 /* Utility to display error messages */
@@ -70,6 +70,7 @@ static void err_exit(const char *title, pj_status_t status)
 	if (status != PJ_SUCCESS) {
 		icedemo_perror(title, status);
 	}
+
 	PJ_LOG(3, (THIS_FILE, "Shutting down.."));
 
 	if (icedemo.icest) {
@@ -478,7 +479,6 @@ static void icedemo_init_session(unsigned rolechar)
 	reset_rem_info();
 }
 
-
 /*
  * Stop/destroy ICE session, invoked from the menu.
  */
@@ -622,7 +622,6 @@ static int encode_session(char buffer[], unsigned maxlen)
 	return (int)(p - buffer);
 }
 
-
 /*
  * Show information contained in the ICE stream transport. This is
  * invoked from the menu.
@@ -716,7 +715,8 @@ static void icedemo_input_remote(void)
 	char *line;
 
 	printf(">");
-	if (stdout) fflush(stdout);
+	if (stdout)
+        fflush(stdout);
 
 	if (fgets(linebuf, sizeof(linebuf), stdin)==NULL)
 		break;
@@ -952,7 +952,6 @@ static void icedemo_start_nego(void)
 	PJ_LOG(3,(THIS_FILE, "ICE negotiation started"));
 }
 
-
 /*
  * Send application data to remote agent.
  */
@@ -991,10 +990,6 @@ static void icedemo_send_data(unsigned comp_id, const char *data)
 	PJ_LOG(3,(THIS_FILE, "Data sent"));
 }
 
-
-/*
- * Display help for the menu.
- */
 static void icedemo_help_menu(void)
 {
 	puts("");
@@ -1026,10 +1021,6 @@ static void icedemo_help_menu(void)
 	puts("");
 }
 
-
-/*
- * Display console menu
- */
 static void icedemo_print_menu(void)
 {
 	puts("");
@@ -1050,99 +1041,83 @@ static void icedemo_print_menu(void)
 	puts("+----------------------------------------------------------------------+");
 }
 
-/*
- * Main console loop.
- */
 static void icedemo_console(void)
 {
 	pj_bool_t app_quit = PJ_FALSE;
 
 	while (!app_quit) {
-	char input[80], *cmd;
-	const char *SEP = " \t\r\n";
-	pj_size_t len;
+		char input[80], *cmd;
+//		const char *SEP = "\t\r\n";
+        const char *SEP = "\r\n";
+		pj_size_t len;
 
-	icedemo_print_menu();
+		icedemo_print_menu();
 
-	printf("Input: ");
-	if (stdout) fflush(stdout);
+		printf("Input: ");
+		if (stdout) {
+            fflush(stdout);
+        }
 
-	pj_bzero(input, sizeof(input));
-	if (fgets(input, sizeof(input), stdin) == NULL)
-		break;
-
-	len = strlen(input);
-	while (len && (input[len-1]=='\r' || input[len-1]=='\n'))
-		input[--len] = '\0';
-
-	cmd = strtok(input, SEP);
-	if (!cmd)
-		continue;
-
-	if (strcmp(cmd, "create")==0 || strcmp(cmd, "c")==0) {
-
-		icedemo_create_instance();
-
-	} else if (strcmp(cmd, "destroy")==0 || strcmp(cmd, "d")==0) {
-
-		icedemo_destroy_instance();
-
-	} else if (strcmp(cmd, "init")==0 || strcmp(cmd, "i")==0) {
-
-		char *role = strtok(NULL, SEP);
-		if (role)
-		icedemo_init_session(*role);
-		else
-		puts("error: Role required");
-
-	} else if (strcmp(cmd, "stop")==0 || strcmp(cmd, "e")==0) {
-
-		icedemo_stop_session();
-
-	} else if (strcmp(cmd, "show")==0 || strcmp(cmd, "s")==0) {
-
-		icedemo_show_ice();
-
-	} else if (strcmp(cmd, "remote")==0 || strcmp(cmd, "r")==0) {
-
-		icedemo_input_remote();
-
-	} else if (strcmp(cmd, "start")==0 || strcmp(cmd, "b")==0) {
-
-		icedemo_start_nego();
-
-	} else if (strcmp(cmd, "send")==0 || strcmp(cmd, "x")==0) {
-
-		char *comp = strtok(NULL, SEP);
-
-		if (!comp) {
-		PJ_LOG(1,(THIS_FILE, "Error: component ID required"));
-		} else {
-		char *data = comp + strlen(comp) + 1;
-		if (!data)
-			data = "";
-		icedemo_send_data(atoi(comp), data);
+		pj_bzero(input, sizeof(input));
+		if (fgets(input, sizeof(input), stdin) == NULL) {
+			break;
 		}
 
-	} else if (strcmp(cmd, "help")==0 || strcmp(cmd, "h")==0) {
+		len = strlen(input);
+		while (len && (input[len-1] == '\r' || input[len-1] == '\n')) {
+            input[--len] = '\0';
+        }
 
-		icedemo_help_menu();
+        printf("cmd(%s)\n", input);
 
-	} else if (strcmp(cmd, "quit")==0 || strcmp(cmd, "q")==0) {
+		cmd = strtok(input, SEP);
+		if (!cmd) {
+			continue;
+		}
 
-		app_quit = PJ_TRUE;
+		if (strcmp(cmd, "create") == 0 || strcmp(cmd, "c") == 0) {
+			icedemo_create_instance();
+		} else if (strcmp(cmd, "destroy")==0 || strcmp(cmd, "d")==0) {
+			icedemo_destroy_instance();
+		} else if (strcmp(cmd, "init")==0 || strcmp(cmd, "i")==0) {
+			char *role = strtok(NULL, SEP);
+			if (role) {
+                icedemo_init_session(*role);
+            } else {
+                puts("error: Role required");
+            }
+		} else if (strcmp(cmd, "stop")==0 || strcmp(cmd, "e")==0) {
+			icedemo_stop_session();
+		} else if (strcmp(cmd, "show")==0 || strcmp(cmd, "s")==0) {
+			icedemo_show_ice();
+		} else if (strcmp(cmd, "remote")==0 || strcmp(cmd, "r")==0) {
+			icedemo_input_remote();
+		} else if (strcmp(cmd, "start")==0 || strcmp(cmd, "b")==0) {
+			icedemo_start_nego();
+		} else if (strcmp(cmd, "send")==0 || strcmp(cmd, "x")==0) {
+			char *comp = strtok(NULL, SEP);
+			if (!comp) {
+				PJ_LOG(1, (THIS_FILE, "Error: component ID required"));
+			} else {
+				char *data = comp + strlen(comp) + 1;
+				if (!data){
+					data = "";
+				}
 
-	} else {
-
-		printf("Invalid command '%s'\n", cmd);
-
+				icedemo_send_data(atoi(comp), data);
+			}
+		} else if (strcmp(cmd, "help")==0 || strcmp(cmd, "h")==0) {
+			icedemo_help_menu();
+		} else if (strcmp(cmd, "quit")==0 || strcmp(cmd, "q")==0) {
+			app_quit = PJ_TRUE;
+		} else {
+			printf("Invalid command '%s'\n", cmd);
+		}
 	}
-	}
+
+	return;
 }
 
-/*
- * Display program usage.
- */
 static void icedemo_usage()
 {
 	puts("Usage: icedemo [optons]");
@@ -1173,87 +1148,96 @@ static void icedemo_usage()
 	puts("");
 }
 
-/*
- * And here's the main()
- */
 int main(int argc, char *argv[])
 {
 	struct pj_getopt_option long_options[] = {
-	{ "comp-cnt",           1, 0, 'c'},
-	{ "nameserver",		1, 0, 'n'},
-	{ "max-host",		1, 0, 'H'},
-	{ "help",		0, 0, 'h'},
-	{ "stun-srv",		1, 0, 's'},
-	{ "turn-srv",		1, 0, 't'},
-	{ "turn-tcp",		0, 0, 'T'},
-	{ "turn-username",	1, 0, 'u'},
-	{ "turn-password",	1, 0, 'p'},
-	{ "turn-fingerprint",	0, 0, 'F'},
-	{ "regular",		0, 0, 'R'},
-	{ "log-file",		1, 0, 'L'},
-	};
+												{ "comp-cnt",           1, 0, 'c'},
+												{ "nameserver",		1, 0, 'n'},
+												{ "max-host",		1, 0, 'H'},
+												{ "help",		0, 0, 'h'},
+												{ "stun-srv",		1, 0, 's'},
+												{ "turn-srv",		1, 0, 't'},
+												{ "turn-tcp",		0, 0, 'T'},
+												{ "turn-username",	1, 0, 'u'},
+												{ "turn-password",	1, 0, 'p'},
+												{ "turn-fingerprint",	0, 0, 'F'},
+												{ "regular",		0, 0, 'R'},
+												{ "log-file",		1, 0, 'L'},
+											  };
 	int c, opt_id;
 	pj_status_t status;
 
 	icedemo.opt.comp_cnt = 1;
 	icedemo.opt.max_host = -1;
 
-	while((c=pj_getopt_long(argc,argv, "c:n:s:t:u:p:H:L:hTFR", long_options, &opt_id))!=-1) {
-	switch (c) {
-	case 'c':
-		icedemo.opt.comp_cnt = atoi(pj_optarg);
-		if (icedemo.opt.comp_cnt < 1 || icedemo.opt.comp_cnt >= PJ_ICE_MAX_COMP) {
-		puts("Invalid component count value");
-		return 1;
+	while((c = pj_getopt_long(argc,argv, "c:n:s:t:u:p:H:L:hTFR", long_options, &opt_id))!=-1) {
+		switch (c) {
+		case 'c':
+			icedemo.opt.comp_cnt = atoi(pj_optarg);
+			if (icedemo.opt.comp_cnt < 1 || icedemo.opt.comp_cnt >= PJ_ICE_MAX_COMP) {
+				puts("Invalid component count value");
+				return 1;
+			}
+			break;
+
+		case 'n':
+			icedemo.opt.ns = pj_str(pj_optarg);
+			break;
+
+		case 'H':
+			icedemo.opt.max_host = atoi(pj_optarg);
+			break;
+
+		case 'h':
+			icedemo_usage();
+			return 0;
+
+		case 's':
+			icedemo.opt.stun_srv = pj_str(pj_optarg);
+			break;
+
+		case 't':
+			icedemo.opt.turn_srv = pj_str(pj_optarg);
+			break;
+		case 'T':
+			icedemo.opt.turn_tcp = PJ_TRUE;
+			break;
+
+		case 'u':
+			icedemo.opt.turn_username = pj_str(pj_optarg);
+			break;
+
+		case 'p':
+			icedemo.opt.turn_password = pj_str(pj_optarg);
+			break;
+		case 'F':
+			icedemo.opt.turn_fingerprint = PJ_TRUE;
+			break;
+
+		case 'R':
+			icedemo.opt.regular = PJ_TRUE;
+			break;
+
+		case 'L':
+			icedemo.opt.log_file = pj_optarg;
+			break;
+
+		default:
+			printf("Argument \"%s\" is not valid. Use -h to see help",
+			   argv[pj_optind]);
+			return 1;
 		}
-		break;
-	case 'n':
-		icedemo.opt.ns = pj_str(pj_optarg);
-		break;
-	case 'H':
-		icedemo.opt.max_host = atoi(pj_optarg);
-		break;
-	case 'h':
-		icedemo_usage();
-		return 0;
-	case 's':
-		icedemo.opt.stun_srv = pj_str(pj_optarg);
-		break;
-	case 't':
-		icedemo.opt.turn_srv = pj_str(pj_optarg);
-		break;
-	case 'T':
-		icedemo.opt.turn_tcp = PJ_TRUE;
-		break;
-	case 'u':
-		icedemo.opt.turn_username = pj_str(pj_optarg);
-		break;
-	case 'p':
-		icedemo.opt.turn_password = pj_str(pj_optarg);
-		break;
-	case 'F':
-		icedemo.opt.turn_fingerprint = PJ_TRUE;
-		break;
-	case 'R':
-		icedemo.opt.regular = PJ_TRUE;
-		break;
-	case 'L':
-		icedemo.opt.log_file = pj_optarg;
-		break;
-	default:
-		printf("Argument \"%s\" is not valid. Use -h to see help",
-		   argv[pj_optind]);
-		return 1;
-	}
 	}
 
 	status = icedemo_init();
-	if (status != PJ_SUCCESS)
-	return 1;
+	if (status != PJ_SUCCESS) {
+		return 1;
+	}
 
 	icedemo_console();
 
 	err_exit("Quitting..", PJ_SUCCESS);
+
 	return 0;
 }
 

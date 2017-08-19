@@ -5,16 +5,14 @@
 
 #if PJ_HAS_TCP
 
-struct accept_op
-{
+struct accept_op {
     pj_ioqueue_op_key_t	op_key;
     pj_sock_t		sock;
     pj_sockaddr		src_addr;
     int			src_addr_len;
 };
 
-struct tcp_listener
-{
+struct tcp_listener {
     pj_turn_listener	     base;
     pj_ioqueue_key_t	    *key;
     unsigned		     accept_cnt;
@@ -38,7 +36,6 @@ static void show_err(const char *sender, const char *title,
     pj_strerror(status, errmsg, sizeof(errmsg));
     PJ_LOG(4,(sender, "%s: %s", title, errmsg));
 }
-
 
 /*
  * Create a new listener on the specified port.
@@ -120,12 +117,10 @@ PJ_DEF(pj_status_t) pj_turn_listener_create_tcp(pj_turn_srv *srv,
     *p_listener = &tcp_lis->base;
     return PJ_SUCCESS;
 
-
 on_error:
     lis_destroy(&tcp_lis->base);
     return status;
 }
-
 
 /*
  * Destroy listener.
@@ -160,7 +155,6 @@ static pj_status_t lis_destroy(pj_turn_listener *listener)
     return PJ_SUCCESS;
 }
 
-
 /*
  * Callback on new TCP connection.
  */
@@ -177,36 +171,36 @@ static void lis_on_accept_complete(pj_ioqueue_key_t *key,
     PJ_UNUSED_ARG(sock);
 
     do {
-	/* Report new connection. */
-	if (status == PJ_SUCCESS) {
-	    char addr[PJ_INET6_ADDRSTRLEN+8];
-	    PJ_LOG(5,(tcp_lis->base.obj_name, "Incoming TCP from %s",
-		      pj_sockaddr_print(&accept_op->src_addr, addr,
-					sizeof(addr), 3)));
-	    transport_create(accept_op->sock, &tcp_lis->base,
-			     &accept_op->src_addr, accept_op->src_addr_len);
-	} else if (status != PJ_EPENDING) {
-	    show_err(tcp_lis->base.obj_name, "accept()", status);
-	}
+        /* Report new connection. */
+        if (status == PJ_SUCCESS) {
+            char addr[PJ_INET6_ADDRSTRLEN+8];
+            PJ_LOG(5,(tcp_lis->base.obj_name, "Incoming TCP from %s",
+                pj_sockaddr_print(&accept_op->src_addr, addr,
+                        sizeof(addr), 3)));
+            transport_create(accept_op->sock, &tcp_lis->base,
+                    &accept_op->src_addr, accept_op->src_addr_len);
+        } else if (status != PJ_EPENDING) {
+            show_err(tcp_lis->base.obj_name, "accept()", status);
+        }
 
-	/* Prepare next accept() */
-	accept_op->src_addr_len = sizeof(accept_op->src_addr);
-	status = pj_ioqueue_accept(key, op_key, &accept_op->sock,
-				   NULL,
-				   &accept_op->src_addr,
-				   &accept_op->src_addr_len);
+        /* Prepare next accept() */
+        accept_op->src_addr_len = sizeof(accept_op->src_addr);
+        status = pj_ioqueue_accept(key, op_key, &accept_op->sock,
+                    NULL,
+                    &accept_op->src_addr,
+                    &accept_op->src_addr_len);
 
     } while (status != PJ_EPENDING && status != PJ_ECANCELLED &&
-	     status != PJ_STATUS_FROM_OS(PJ_BLOCKING_ERROR_VAL));
+         status != PJ_STATUS_FROM_OS(PJ_BLOCKING_ERROR_VAL));
+         
+    return;
 }
-
 
 /****************************************************************************/
 /*
  * Transport
  */
-enum
-{
+enum {
     TIMER_NONE,
     TIMER_DESTROY
 };
@@ -218,14 +212,12 @@ enum
  */
 #define SHUTDOWN_DELAY  10
 
-struct recv_op
-{
+struct recv_op {
     pj_ioqueue_op_key_t	op_key;
     pj_turn_pkt		pkt;
 };
 
-struct tcp_transport
-{
+struct tcp_transport {
     pj_turn_transport	 base;
     pj_pool_t		*pool;
     pj_timer_entry	 timer;
@@ -302,7 +294,6 @@ static void transport_create(pj_sock_t sock, pj_turn_listener *lis,
     /* Should not access transport from now, it may have been destroyed */
 }
 
-
 static void tcp_destroy(struct tcp_transport *tcp)
 {
     if (tcp->key) {
@@ -319,7 +310,6 @@ static void tcp_destroy(struct tcp_transport *tcp)
     }
 }
 
-
 static void timer_callback(pj_timer_heap_t *timer_heap,
 			   pj_timer_entry *entry)
 {
@@ -329,7 +319,6 @@ static void timer_callback(pj_timer_heap_t *timer_heap,
 
     tcp_destroy(tcp);
 }
-
 
 static void tcp_on_read_complete(pj_ioqueue_key_t *key, 
 				 pj_ioqueue_op_key_t *op_key, 
@@ -407,7 +396,6 @@ static void tcp_on_read_complete(pj_ioqueue_key_t *key,
 
 }
 
-
 static pj_status_t tcp_sendto(pj_turn_transport *tp,
 			      const void *packet,
 			      pj_size_t size,
@@ -423,7 +411,6 @@ static pj_status_t tcp_sendto(pj_turn_transport *tp,
 
     return pj_ioqueue_send(tcp->key, &tcp->send_op, packet, &length, flag);
 }
-
 
 static void tcp_add_ref(pj_turn_transport *tp,
 			pj_turn_allocation *alloc)
@@ -443,7 +430,6 @@ static void tcp_add_ref(pj_turn_transport *tp,
 	tcp->timer.id = TIMER_NONE;
     }
 }
-
 
 static void tcp_dec_ref(pj_turn_transport *tp,
 			pj_turn_allocation *alloc)

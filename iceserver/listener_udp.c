@@ -3,14 +3,12 @@
 #include "turn.h"
 #include <pj/compat/socket.h>
 
-struct read_op
-{
+struct read_op {
     pj_ioqueue_op_key_t	op_key;
     pj_turn_pkt		pkt;
 };
 
-struct udp_listener
-{
+struct udp_listener {
     pj_turn_listener	     base;
 
     pj_ioqueue_key_t	    *key;
@@ -129,7 +127,6 @@ on_error:
     return status;
 }
 
-
 /*
  * Destroy listener.
  */
@@ -198,7 +195,6 @@ static void udp_dec_ref(pj_turn_transport *tp,
     PJ_UNUSED_ARG(alloc);
 }
 
-
 /*
  * Callback on received packet.
  */
@@ -213,37 +209,39 @@ static void on_read_complete(pj_ioqueue_key_t *key,
     udp = (struct udp_listener*) pj_ioqueue_get_user_data(key);
 
     do {
-	pj_pool_t *rpool;
+        pj_pool_t *rpool;
 
-	/* Report to server */
-	if (bytes_read > 0) {
-	    read_op->pkt.len = bytes_read;
-	    pj_gettimeofday(&read_op->pkt.rx_time);
+        /* Report to server */
+        if (bytes_read > 0) {
+            read_op->pkt.len = bytes_read;
+            pj_gettimeofday(&read_op->pkt.rx_time);
 
-	    pj_turn_srv_on_rx_pkt(udp->base.server, &read_op->pkt);
-	}
+            pj_turn_srv_on_rx_pkt(udp->base.server, &read_op->pkt);
+        }
 
-	/* Reset pool */
-	rpool = read_op->pkt.pool;
-	pj_pool_reset(rpool);
-	read_op->pkt.pool = rpool;
-	read_op->pkt.transport = &udp->tp;
-	read_op->pkt.src.tp_type = udp->base.tp_type;
+        /* Reset pool */
+        rpool = read_op->pkt.pool;
+        pj_pool_reset(rpool);
+        read_op->pkt.pool = rpool;
+        read_op->pkt.transport = &udp->tp;
+        read_op->pkt.src.tp_type = udp->base.tp_type;
 
-	/* Read next packet */
-	bytes_read = sizeof(read_op->pkt.pkt);
-	read_op->pkt.src_addr_len = sizeof(read_op->pkt.src.clt_addr);
-	pj_bzero(&read_op->pkt.src.clt_addr, sizeof(read_op->pkt.src.clt_addr));
+        /* Read next packet */
+        bytes_read = sizeof(read_op->pkt.pkt);
+        read_op->pkt.src_addr_len = sizeof(read_op->pkt.src.clt_addr);
+        pj_bzero(&read_op->pkt.src.clt_addr, sizeof(read_op->pkt.src.clt_addr));
 
-	status = pj_ioqueue_recvfrom(udp->key, op_key,
-				     read_op->pkt.pkt, &bytes_read, 0,
-				     &read_op->pkt.src.clt_addr, 
-				     &read_op->pkt.src_addr_len);
+        status = pj_ioqueue_recvfrom(udp->key, op_key,
+                        read_op->pkt.pkt, &bytes_read, 0,
+                        &read_op->pkt.src.clt_addr, 
+                        &read_op->pkt.src_addr_len);
 
-	if (status != PJ_EPENDING && status != PJ_SUCCESS)
-	    bytes_read = -status;
+        if (status != PJ_EPENDING && status != PJ_SUCCESS)
+            bytes_read = -status;
 
     } while (status != PJ_EPENDING && status != PJ_ECANCELLED &&
-	     status != PJ_STATUS_FROM_OS(PJ_BLOCKING_ERROR_VAL));
+         status != PJ_STATUS_FROM_OS(PJ_BLOCKING_ERROR_VAL));
+         
+    return;
 }
 

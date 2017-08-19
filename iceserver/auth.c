@@ -32,6 +32,7 @@ PJ_DEF(pj_status_t) pj_turn_auth_init(const char *realm)
 {
     PJ_ASSERT_RETURN(pj_ansi_strlen(realm) < MAX_REALM, PJ_ENAMETOOLONG);
     pj_ansi_strcpy(g_realm, realm);
+    
     return PJ_SUCCESS;
 }
 
@@ -81,21 +82,22 @@ PJ_DEF(pj_status_t) pj_turn_get_password(const pj_stun_msg *msg,
     PJ_UNUSED_ARG(pool);
 
     if (pj_stricmp2(realm, g_realm)) {
-	LOG((THIS_FILE, "auth error: invalid realm '%.*s'", 
-			(int)realm->slen, realm->ptr));
-	return PJ_EINVAL;
+        LOG((THIS_FILE, "auth error: invalid realm '%.*s'", 
+                (int)realm->slen, realm->ptr));
+        return PJ_EINVAL;
     }
 
     for (i=0; i<PJ_ARRAY_SIZE(g_cred); ++i) {
-	if (pj_stricmp2(username, g_cred[i].username) == 0) {
-	    *data_type = PJ_STUN_PASSWD_PLAIN;
-	    *data = pj_str(g_cred[i].passwd);
-	    return PJ_SUCCESS;
-	}
+        if (pj_stricmp2(username, g_cred[i].username) == 0) {
+            *data_type = PJ_STUN_PASSWD_PLAIN;
+            *data = pj_str(g_cred[i].passwd);
+            return PJ_SUCCESS;
+        }
     }
 
     LOG((THIS_FILE, "auth error: user '%.*s' not found", 
-		    (int)username->slen, username->ptr));
+            (int)username->slen, username->ptr));
+            
     return PJ_ENOTFOUND;
 }
 
@@ -116,9 +118,9 @@ PJ_DEF(pj_bool_t) pj_turn_verify_nonce(const pj_stun_msg *msg,
     PJ_UNUSED_ARG(username);
 
     if (pj_stricmp2(nonce, THE_NONCE)) {
-	LOG((THIS_FILE, "auth error: invalid nonce '%.*s'", 
-			(int)nonce->slen, nonce->ptr));
-	return PJ_FALSE;
+        LOG((THIS_FILE, "auth error: invalid nonce '%.*s'", 
+                (int)nonce->slen, nonce->ptr));
+        return PJ_FALSE;
     }
 
     return PJ_TRUE;

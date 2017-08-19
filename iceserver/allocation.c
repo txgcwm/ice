@@ -320,7 +320,7 @@ PJ_DEF(pj_status_t) pj_turn_allocation_create(pj_turn_transport *transport,
     status = pj_stun_session_create(&srv->core.stun_cfg, alloc->obj_name,
 				    &sess_cb, PJ_FALSE, NULL, &alloc->sess);
     if (status != PJ_SUCCESS) {
-	goto on_error;
+		goto on_error;
     }
 
     /* Attach to STUN session */
@@ -329,7 +329,7 @@ PJ_DEF(pj_status_t) pj_turn_allocation_create(pj_turn_transport *transport,
     /* Init authentication credential */
     status = init_cred(alloc, msg);
     if (status != PJ_SUCCESS) {
-	goto on_error;
+		goto on_error;
     }
 
     /* Attach authentication credential to STUN session */
@@ -339,7 +339,7 @@ PJ_DEF(pj_status_t) pj_turn_allocation_create(pj_turn_transport *transport,
     /* Create the relay resource */
     status = create_relay(srv, alloc, msg, &req, &alloc->relay);
     if (status != PJ_SUCCESS) {
-	goto on_error;
+		goto on_error;
     }
 
     /* Register this allocation */
@@ -367,10 +367,10 @@ on_error:
 			    transport, PJ_TRUE, src_addr, src_addr_len);
 
     /* Cleanup */
-    destroy_allocation(alloc);
+	destroy_allocation(alloc);
+	
     return status;
 }
-
 
 /* Destroy relay resource */
 static void destroy_relay(pj_turn_relay_res *relay)

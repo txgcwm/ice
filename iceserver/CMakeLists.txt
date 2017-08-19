@@ -6,10 +6,5 @@ aux_source_directory(. SRC_LIST)
 
 add_executable(${PROJECT_NAME} ${SRC_LIST})
 
-target_link_libraries(${PROJECT_NAME} libpjnath.a)
-target_link_libraries(${PROJECT_NAME} libpjlib-util.a)
-target_link_libraries(${PROJECT_NAME} libpj.a)
-target_link_libraries(${PROJECT_NAME} pthread)
-#target_link_libraries(${PROJECT_NAME} uuid)
-target_link_libraries(${PROJECT_NAME} m)
-target_link_libraries(${PROJECT_NAME} rt)
+target_link_libraries(${PROJECT_NAME} pjnath pjlib-util pj
+                                        pthread m rt)

@@ -28,9 +28,26 @@ cd ${DIRNAME}
 --disable-l16-codec --disable-gsm-codec --disable-g722-codec --disable-g7221-codec \
 --disable-speex-codec --disable-ilbc-codec --disable-sdl --disable-ffmpeg --disable-v4l2 \
 --disable-openh264 --disable-libwebrtc --disable-libyuv --disable-shared
+make dep
 make
 make install
 cd ..
+
+function rename_libs()
+{
+    cd ${INSTALLDIR}/lib/
+
+    comflag=-i686-pc-linux-gnu
+
+    for file in `ls *.a`; do
+        file_new=`echo "$file" | sed 's/'$comflag'//g'`
+        mv ${file} ${file_new}
+    done
+
+    cd -
+}
+
+rename_libs
 
 # copy libs and include
 cp -rf ${INSTALLDIR}/lib/ ${CURDIR}/../../prebuild/pjsip

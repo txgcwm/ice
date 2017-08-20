@@ -1,10 +1,9 @@
-#include <stdlib.h>
+// #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include <pjlib.h>
 #include <pjlib-util.h>
 #include <pjnath.h>
-
 
 #define THIS_FILE   "icedemo.c"
 
@@ -1083,9 +1082,8 @@ static void icedemo_console(void)
 	pj_bool_t app_quit = PJ_FALSE;
 
 	while (!app_quit) {
-		char input[80], *cmd = NULL;
-//		const char *SEP = "\t\r\n";
-        const char *SEP = "\r\n";
+		char input[80] = {0}, *cmd = NULL;
+		const char *SEP = "\t\r\n";
 		pj_size_t len;
 
 		icedemo_print_menu();
@@ -1096,29 +1094,29 @@ static void icedemo_console(void)
         }
 
 		pj_bzero(input, sizeof(input));
+
 		if (fgets(input, sizeof(input), stdin) == NULL) {
 			break;
 		}
 
 		len = strlen(input);
-		while (len && (input[len-1] == '\r' || input[len-1] == '\n')) {
+		while (len && (input[len - 1] == '\r' || input[len - 1] == '\n')) {
             input[--len] = '\0';
         }
 
-		cmd = input;
-		// cmd = strtok(input, " ");
-		// if (!cmd) {
-		// 	continue;
-		// }
+		cmd = strtok(input, SEP);
+		if (!cmd) {
+			continue;
+		}
 
-		printf("(%s) (%d)\n", cmd, strlen(cmd));
+		printf("%p (%p)\n", input, cmd);
 
 		if (strcmp(cmd, "create") == 0 || strcmp(cmd, "c") == 0) {
 			icedemo_create_instance();
 		} else if (strcmp(cmd, "destroy") == 0 || strcmp(cmd, "d") == 0) {
 			icedemo_destroy_instance();
 		} else if (strcmp(cmd, "init") == 0 || strcmp(cmd, "i") == 0) {
-			char *role = strtok(NULL, " ");
+			char *role = strtok(NULL, SEP);
 			if (role) {
                 icedemo_init_session(*role);
             } else {
@@ -1208,7 +1206,7 @@ int main(int argc, char *argv[])
 	icedemo.opt.comp_cnt = 1;
 	icedemo.opt.max_host = -1;
 
-	while((c = pj_getopt_long(argc,argv, "c:n:s:t:u:p:H:L:hTFR", long_options, &opt_id)) != -1) {
+	while((c = pj_getopt_long(argc, argv, "c:n:s:t:u:p:H:L:hTFR", long_options, &opt_id)) != -1) {
 		switch (c) {
 		case 'c':
 			icedemo.opt.comp_cnt = atoi(pj_optarg);
@@ -1281,3 +1279,4 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
+// gcc -o iceclient main.c -I ../3rdparty/prebuild/pjsip/include -I ../3rdparty/prebuild/pjsip/include/pjlib-util/ -I ../3rdparty/prebuild/pjsip/include/pjnath/ -L../3rdparty/prebuild/pjsip/lib -lpjnath -lpjlib-util -lpj -lpthread -lm

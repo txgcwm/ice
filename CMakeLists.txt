@@ -1,10 +1,11 @@
 project(ice)
 
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 2.8.2)
 
 set(PJSIP_ROOT ${CMAKE_SOURCE_DIR}/3rdparty/prebuild/pjsip)
 
 #include_directories(${CMAKE_SOURCE_DIR}/public)
+#add_compile_options("-m64")
 
 include_directories(${PJSIP_ROOT}/include)
 include_directories(${PJSIP_ROOT}/include/pjlib-util/)
